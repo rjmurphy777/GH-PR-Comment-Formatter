@@ -95,6 +95,28 @@ pub fn fetch_pr_review_comments_with_runner(
     fetch_api_endpoint_with_runner(&endpoint, runner)
 }
 
+/// Fetches PR reviews (review-level comments) from GitHub.
+///
+/// Uses: `gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews`
+pub fn fetch_pr_reviews(
+    owner: &str,
+    repo: &str,
+    pr_number: i32,
+) -> Result<Vec<Value>, GitHubAPIError> {
+    fetch_pr_reviews_with_runner(owner, repo, pr_number, &DEFAULT_RUNNER)
+}
+
+/// Fetches PR reviews with a custom runner (for testing).
+pub fn fetch_pr_reviews_with_runner(
+    owner: &str,
+    repo: &str,
+    pr_number: i32,
+    runner: &dyn CommandRunner,
+) -> Result<Vec<Value>, GitHubAPIError> {
+    let endpoint = format!("repos/{owner}/{repo}/pulls/{pr_number}/reviews");
+    fetch_api_endpoint_with_runner(&endpoint, runner)
+}
+
 /// Fetches PR info (metadata) from GitHub.
 ///
 /// Uses: `gh api repos/{owner}/{repo}/pulls/{pr_number}`
@@ -197,6 +219,32 @@ mod tests {
             result.unwrap_err(),
             GitHubAPIError::CommandFailed(_)
         ));
+    }
+
+    #[test]
+    fn test_fetch_pr_reviews_success() {
+        let runner =
+            MockRunner::success(r#"[{"id": 123, "body": "Review comment", "state": "COMMENTED"}]"#);
+        let result = fetch_pr_reviews_with_runner("owner", "repo", 1, &runner);
+        assert!(result.is_ok());
+        let reviews = result.unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0]["id"], 123);
+        assert_eq!(reviews[0]["body"], "Review comment");
+    }
+
+    #[test]
+    fn test_fetch_pr_reviews_api_error() {
+        let runner = MockRunner::error(GitHubAPIError::ApiError("Not found".to_string()));
+        let result = fetch_pr_reviews_with_runner("owner", "repo", 1, &runner);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GitHubAPIError::ApiError(_)));
+    }
+
+    #[test]
+    fn test_fetch_pr_reviews_public_api() {
+        let result = fetch_pr_reviews("nonexistent-owner-xyz", "nonexistent-repo-xyz", 99999);
+        assert!(result.is_err());
     }
 
     #[test]
