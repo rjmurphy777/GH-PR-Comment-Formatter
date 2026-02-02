@@ -20,7 +20,7 @@ fn main() -> ExitCode {
     match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             ExitCode::FAILURE
         }
     }
@@ -78,7 +78,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // Write output
     if let Some(output_path) = &args.output {
         fs::write(output_path, &output)?;
-        eprintln!("Output written to {}", output_path);
+        eprintln!("Output written to {output_path}");
     } else {
         io::stdout().write_all(output.as_bytes())?;
     }

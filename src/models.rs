@@ -56,10 +56,10 @@ impl PRComment {
     pub fn get_line_info(&self) -> String {
         match (self.line_number, self.start_line) {
             (Some(line), Some(start)) if start != line => {
-                format!("lines {}-{}", start, line)
+                format!("lines {start}-{line}")
             }
-            (Some(line), _) => format!("line {}", line),
-            (None, Some(start)) => format!("line {}", start),
+            (Some(line), _) => format!("line {line}"),
+            (None, Some(start)) => format!("line {start}"),
             (None, None) => "line unknown".to_string(),
         }
     }

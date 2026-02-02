@@ -119,9 +119,7 @@ pub fn parse_pr_url(url: &str) -> Result<(String, String, i32), ParseError> {
 /// 2. Positional PR URL/shorthand argument
 pub fn resolve_pr_args(args: &Args) -> Result<(String, String, i32), ParseError> {
     // If all explicit args are provided, use them
-    if let (Some(owner), Some(repo), Some(pr_number)) =
-        (&args.owner, &args.repo, args.pr_number)
-    {
+    if let (Some(owner), Some(repo), Some(pr_number)) = (&args.owner, &args.repo, args.pr_number) {
         return Ok((owner.clone(), repo.clone(), pr_number));
     }
 

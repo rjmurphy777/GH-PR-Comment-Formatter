@@ -12,7 +12,7 @@ pub fn fetch_pr_comments(
     repo: &str,
     pr_number: i32,
 ) -> Result<Vec<Value>, GitHubAPIError> {
-    let endpoint = format!("repos/{}/{}/pulls/{}/comments", owner, repo, pr_number);
+    let endpoint = format!("repos/{owner}/{repo}/pulls/{pr_number}/comments");
     fetch_api_endpoint(&endpoint)
 }
 
@@ -24,7 +24,7 @@ pub fn fetch_pr_review_comments(
     repo: &str,
     pr_number: i32,
 ) -> Result<Vec<Value>, GitHubAPIError> {
-    let endpoint = format!("repos/{}/{}/issues/{}/comments", owner, repo, pr_number);
+    let endpoint = format!("repos/{owner}/{repo}/issues/{pr_number}/comments");
     fetch_api_endpoint(&endpoint)
 }
 
@@ -32,10 +32,10 @@ pub fn fetch_pr_review_comments(
 ///
 /// Uses: `gh api repos/{owner}/{repo}/pulls/{pr_number}`
 pub fn fetch_pr_info(owner: &str, repo: &str, pr_number: i32) -> Result<Value, GitHubAPIError> {
-    let endpoint = format!("repos/{}/{}/pulls/{}", owner, repo, pr_number);
+    let endpoint = format!("repos/{owner}/{repo}/pulls/{pr_number}");
     let output = run_gh_api(&endpoint)?;
     serde_json::from_str(&output)
-        .map_err(|e| GitHubAPIError::ParseError(format!("Failed to parse PR info: {}", e)))
+        .map_err(|e| GitHubAPIError::ParseError(format!("Failed to parse PR info: {e}")))
 }
 
 /// Runs the gh api command and returns the raw output.
@@ -60,14 +60,14 @@ fn run_gh_api(endpoint: &str) -> Result<String, GitHubAPIError> {
     }
 
     String::from_utf8(output.stdout)
-        .map_err(|e| GitHubAPIError::ParseError(format!("Invalid UTF-8 in response: {}", e)))
+        .map_err(|e| GitHubAPIError::ParseError(format!("Invalid UTF-8 in response: {e}")))
 }
 
 /// Fetches an API endpoint that returns an array.
 fn fetch_api_endpoint(endpoint: &str) -> Result<Vec<Value>, GitHubAPIError> {
     let output = run_gh_api(endpoint)?;
     serde_json::from_str(&output)
-        .map_err(|e| GitHubAPIError::ParseError(format!("Failed to parse JSON array: {}", e)))
+        .map_err(|e| GitHubAPIError::ParseError(format!("Failed to parse JSON array: {e}")))
 }
 
 #[cfg(test)]

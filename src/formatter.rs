@@ -78,7 +78,7 @@ pub fn format_comments_grouped(
 
     for file in files {
         let file_comments = grouped.get(file).unwrap();
-        output.push_str(&format!("## {}\n\n", file));
+        output.push_str(&format!("## {file}\n\n"));
 
         // Sort by line number, then by date
         let mut sorted_comments: Vec<_> = file_comments.iter().collect();
@@ -89,7 +89,11 @@ pub fn format_comments_grouped(
         });
 
         for comment in sorted_comments {
-            output.push_str(&format_comment_for_llm(comment, include_snippet, snippet_lines));
+            output.push_str(&format_comment_for_llm(
+                comment,
+                include_snippet,
+                snippet_lines,
+            ));
             output.push_str("\n---\n\n");
         }
     }
@@ -119,7 +123,11 @@ pub fn format_comments_flat(
 
     for (i, comment) in sorted_comments.iter().enumerate() {
         output.push_str(&format!("## Comment {}\n\n", i + 1));
-        output.push_str(&format_comment_for_llm(comment, include_snippet, snippet_lines));
+        output.push_str(&format_comment_for_llm(
+            comment,
+            include_snippet,
+            snippet_lines,
+        ));
         output.push_str("\n---\n\n");
     }
 
@@ -185,10 +193,10 @@ pub fn format_for_claude(
 
     // PR info if available
     if let Some(title) = pr_title {
-        output.push_str(&format!("**PR Title:** {}\n", title));
+        output.push_str(&format!("**PR Title:** {title}\n"));
     }
     if let Some(url) = pr_url {
-        output.push_str(&format!("**PR URL:** {}\n", url));
+        output.push_str(&format!("**PR URL:** {url}\n"));
     }
 
     // Summary
@@ -219,7 +227,7 @@ pub fn format_for_claude(
 
     for file in files {
         let file_comments = grouped.get(file).unwrap();
-        output.push_str(&format!("### {}\n\n", file));
+        output.push_str(&format!("### {file}\n\n"));
 
         // Sort by line number, then by date
         let mut sorted_comments: Vec<_> = file_comments.iter().collect();
@@ -230,7 +238,11 @@ pub fn format_for_claude(
         });
 
         for comment in sorted_comments {
-            output.push_str(&format!("#### {} ({})\n\n", comment.get_line_info(), comment.author));
+            output.push_str(&format!(
+                "#### {} ({})\n\n",
+                comment.get_line_info(),
+                comment.author
+            ));
 
             // Code snippet
             if include_snippet {
@@ -252,7 +264,11 @@ pub fn format_for_claude(
 }
 
 /// Formats comments as JSON for programmatic use.
-pub fn format_as_json(comments: &[PRComment], include_snippet: bool, snippet_lines: usize) -> String {
+pub fn format_as_json(
+    comments: &[PRComment],
+    include_snippet: bool,
+    snippet_lines: usize,
+) -> String {
     let json_comments: Vec<_> = comments
         .iter()
         .map(|c| {

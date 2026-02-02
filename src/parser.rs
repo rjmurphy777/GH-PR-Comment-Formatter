@@ -14,8 +14,7 @@ pub fn parse_datetime(dt_str: &str) -> Result<DateTime<Utc>, chrono::ParseError>
         .map(|dt| dt.with_timezone(&Utc))
         .or_else(|_| {
             // Handle the case without fractional seconds
-            DateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%SZ")
-                .map(|dt| dt.with_timezone(&Utc))
+            DateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%SZ").map(|dt| dt.with_timezone(&Utc))
         })
 }
 
@@ -103,10 +102,7 @@ pub fn parse_comments(comments_data: &[Value]) -> Vec<PRComment> {
 /// If author is None or empty, returns all comments.
 pub fn filter_by_author(comments: Vec<PRComment>, author: Option<&str>) -> Vec<PRComment> {
     match author {
-        Some(a) if !a.is_empty() => comments
-            .into_iter()
-            .filter(|c| c.author == a)
-            .collect(),
+        Some(a) if !a.is_empty() => comments.into_iter().filter(|c| c.author == a).collect(),
         _ => comments,
     }
 }
@@ -375,7 +371,10 @@ mod tests {
         assert_eq!(most_recent.len(), 2); // file1.rs and file2.rs
 
         // Find the file1.rs comment
-        let file1_comment = most_recent.iter().find(|c| c.file_path == "file1.rs").unwrap();
+        let file1_comment = most_recent
+            .iter()
+            .find(|c| c.file_path == "file1.rs")
+            .unwrap();
         assert_eq!(file1_comment.id, 2); // The more recent one
     }
 
