@@ -51,9 +51,7 @@ class TestFetchPRComments:
     @patch("pr_comments.fetcher.subprocess.run")
     def test_raises_error_on_api_failure(self, mock_run):
         """Test that API errors are handled."""
-        mock_run.side_effect = subprocess.CalledProcessError(
-            1, "gh", stderr="Not found"
-        )
+        mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="Not found")
 
         with pytest.raises(GitHubAPIError) as exc_info:
             fetch_pr_comments("owner", "repo", 999)
@@ -135,9 +133,7 @@ class TestFetchPRInfo:
     @patch("pr_comments.fetcher.subprocess.run")
     def test_raises_error_on_failure(self, mock_run):
         """Test error handling for PR info."""
-        mock_run.side_effect = subprocess.CalledProcessError(
-            1, "gh", stderr="Not found"
-        )
+        mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="Not found")
 
         with pytest.raises(GitHubAPIError):
             fetch_pr_info("owner", "repo", 999)

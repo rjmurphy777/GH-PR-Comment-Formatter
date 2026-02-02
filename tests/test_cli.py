@@ -1,7 +1,7 @@
 """Tests for PR Comments CLI."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

@@ -2,8 +2,6 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
 from pr_comments.formatter import (
     format_comment_for_llm,
     format_comments_flat,

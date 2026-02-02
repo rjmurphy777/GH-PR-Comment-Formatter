@@ -35,3 +35,12 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+
+# Pre-commit
+.pre-commit-config.yaml.*.bak
+
+# Mypy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/

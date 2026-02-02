@@ -1,7 +1,5 @@
 """Formatter for outputting PR comments in LLM-friendly format."""
 
-from typing import Optional
-
 from .models import PRComment
 from .parser import group_by_file
 
@@ -68,7 +66,7 @@ def format_comments_grouped(
     grouped = group_by_file(comments)
     output_lines = []
 
-    output_lines.append(f"# PR Comments Summary")
+    output_lines.append("# PR Comments Summary")
     output_lines.append(f"Total comments: {len(comments)}")
     output_lines.append(f"Files with comments: {len(grouped)}")
     output_lines.append("")
@@ -152,7 +150,9 @@ def format_comments_minimal(comments: list[PRComment]) -> str:
             if len(comment.body) > 100:
                 body_preview += "..."
 
-            output_lines.append(f"  └─ {comment.get_line_info()} ({comment.author}): {body_preview}")
+            output_lines.append(
+                f"  └─ {comment.get_line_info()} ({comment.author}): {body_preview}"
+            )
 
         output_lines.append("")
 
@@ -161,8 +161,8 @@ def format_comments_minimal(comments: list[PRComment]) -> str:
 
 def format_for_claude(
     comments: list[PRComment],
-    pr_url: Optional[str] = None,
-    pr_title: Optional[str] = None,
+    pr_url: str | None = None,
+    pr_title: str | None = None,
     include_snippet: bool = True,
     snippet_lines: int = 15,
 ) -> str:

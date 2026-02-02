@@ -6,14 +6,13 @@ when running regular unit tests with: pytest -m "not integration"
 To run only integration tests: pytest -m integration
 """
 
-import json
 import subprocess
 
 import pytest
 
 from pr_comments.fetcher import fetch_pr_comments, fetch_pr_info
-from pr_comments.formatter import format_for_claude, format_comments_minimal
-from pr_comments.parser import parse_comments, filter_by_author
+from pr_comments.formatter import format_comments_minimal, format_for_claude
+from pr_comments.parser import filter_by_author, parse_comments
 
 
 def gh_is_authenticated():
