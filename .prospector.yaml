@@ -1,0 +1,49 @@
+# Prospector configuration
+strictness: medium
+doc-warnings: false
+
+ignore-paths:
+  - tests
+  - venv
+  - .venv
+  - build
+  - dist
+
+pylint:
+  run: true
+  options:
+    max-line-length: 100
+    disable:
+      - too-many-arguments
+      - too-many-branches
+      - too-many-statements
+      - too-many-locals  # CLI main functions naturally have many locals
+      - missing-module-docstring
+      - missing-class-docstring
+      - missing-function-docstring  # We have docstrings, but not enforcing everywhere
+      - unspecified-encoding  # We use Path.write_text() which handles encoding
+
+pep8:
+  run: true
+  options:
+    max-line-length: 100
+
+pyflakes:
+  run: true
+
+mccabe:
+  run: true
+  options:
+    max-complexity: 15
+
+pep257:
+  run: false  # Covered by pydocstyle
+
+dodgy:
+  run: true
+
+pyroma:
+  run: false  # Only relevant for packaging
+
+vulture:
+  run: false  # Can be noisy

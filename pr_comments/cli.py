@@ -4,7 +4,7 @@
 import argparse
 import json
 import sys
-from typing import Optional
+from pathlib import Path
 
 from .fetcher import GitHubAPIError, fetch_pr_comments, fetch_pr_info
 from .formatter import (
@@ -46,7 +46,7 @@ def parse_pr_url(url: str) -> tuple[str, str, int]:
     raise ValueError(f"Cannot parse PR URL: {url}")
 
 
-def main(args: Optional[list[str]] = None) -> int:
+def main(args: list[str] | None = None) -> int:
     """Main CLI entry point.
 
     Args:
@@ -127,9 +127,9 @@ def main(args: Optional[list[str]] = None) -> int:
     parsed = parser.parse_args(args)
 
     # Determine owner, repo, and PR number
-    owner: Optional[str] = None
-    repo: Optional[str] = None
-    pr_number: Optional[int] = None
+    owner: str | None = None
+    repo: str | None = None
+    pr_number: int | None = None
 
     if parsed.pr:
         try:
@@ -145,6 +145,9 @@ def main(args: Optional[list[str]] = None) -> int:
         parser.print_help()
         print("\nError: Provide a PR URL or --owner, --repo, and --pr-number", file=sys.stderr)
         return 1
+
+    # Type narrowing: at this point, all values are guaranteed to be set
+    assert owner is not None and repo is not None and pr_number is not None
 
     # Fetch comments
     try:
@@ -196,8 +199,7 @@ def main(args: Optional[list[str]] = None) -> int:
 
     # Write output
     if parsed.output:
-        with open(parsed.output, "w") as f:
-            f.write(output)
+        Path(parsed.output).write_text(output)
         print(f"Output written to {parsed.output}", file=sys.stderr)
     else:
         print(output)

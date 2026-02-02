@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 
 @dataclass
@@ -11,8 +10,8 @@ class PRComment:
 
     id: int
     file_path: str
-    line_number: Optional[int]
-    start_line: Optional[int]
+    line_number: int | None
+    start_line: int | None
     author: str
     body: str
     created_at: datetime
@@ -47,7 +46,6 @@ class PRComment:
         """Get a human-readable line number string."""
         if self.start_line and self.line_number and self.start_line != self.line_number:
             return f"lines {self.start_line}-{self.line_number}"
-        elif self.line_number:
+        if self.line_number:
             return f"line {self.line_number}"
-        else:
-            return "line unknown"
+        return "line unknown"

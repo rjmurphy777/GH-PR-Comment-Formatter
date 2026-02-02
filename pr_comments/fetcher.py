@@ -2,13 +2,11 @@
 
 import json
 import subprocess
-from typing import Any
+from typing import Any, cast
 
 
 class GitHubAPIError(Exception):
     """Raised when GitHub API call fails."""
-
-    pass
 
 
 def fetch_pr_comments(owner: str, repo: str, pr_number: int) -> list[dict[str, Any]]:
@@ -34,7 +32,7 @@ def fetch_pr_comments(owner: str, repo: str, pr_number: int) -> list[dict[str, A
             text=True,
             check=True,
         )
-        return json.loads(result.stdout)
+        return cast(list[dict[str, Any]], json.loads(result.stdout))
     except subprocess.CalledProcessError as e:
         raise GitHubAPIError(f"Failed to fetch PR comments: {e.stderr}") from e
     except json.JSONDecodeError as e:
@@ -66,7 +64,7 @@ def fetch_pr_review_comments(owner: str, repo: str, pr_number: int) -> list[dict
             text=True,
             check=True,
         )
-        return json.loads(result.stdout)
+        return cast(list[dict[str, Any]], json.loads(result.stdout))
     except subprocess.CalledProcessError as e:
         raise GitHubAPIError(f"Failed to fetch PR review comments: {e.stderr}") from e
     except json.JSONDecodeError as e:
@@ -96,7 +94,7 @@ def fetch_pr_info(owner: str, repo: str, pr_number: int) -> dict[str, Any]:
             text=True,
             check=True,
         )
-        return json.loads(result.stdout)
+        return cast(dict[str, Any], json.loads(result.stdout))
     except subprocess.CalledProcessError as e:
         raise GitHubAPIError(f"Failed to fetch PR info: {e.stderr}") from e
     except json.JSONDecodeError as e:

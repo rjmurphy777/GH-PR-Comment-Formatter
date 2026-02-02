@@ -1,7 +1,7 @@
 """Parser for GitHub PR comment JSON data."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from .models import PRComment
 
@@ -55,7 +55,7 @@ def parse_comments(comments_data: list[dict[str, Any]]) -> list[PRComment]:
     return [parse_comment(c) for c in comments_data]
 
 
-def filter_by_author(comments: list[PRComment], author: Optional[str]) -> list[PRComment]:
+def filter_by_author(comments: list[PRComment], author: str | None) -> list[PRComment]:
     """Filter comments by author.
 
     Args:

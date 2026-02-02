@@ -2,8 +2,6 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
 from pr_comments.models import PRComment
 from pr_comments.parser import (
     filter_by_author,
