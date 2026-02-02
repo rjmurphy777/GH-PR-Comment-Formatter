@@ -21,3 +21,10 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+
+      - id: cargo-coverage
+        name: cargo coverage (100% required)
+        entry: bash -c 'cargo tarpaulin --lib --fail-under 100 --skip-clean'
+        language: system
+        types: [rust]
+        pass_filenames: false

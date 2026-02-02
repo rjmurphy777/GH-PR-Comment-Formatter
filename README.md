@@ -1,6 +1,17 @@
 # pr-comments
 
+[![CI](https://github.com/rjmurphy777/Pull-request-fetcher/actions/workflows/ci.yml/badge.svg)](https://github.com/rjmurphy777/Pull-request-fetcher/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/rjmurphy777/Pull-request-fetcher/branch/main/graph/badge.svg)](https://codecov.io/gh/rjmurphy777/Pull-request-fetcher)
+
 A CLI tool to fetch and format GitHub PR comments for LLM consumption.
+
+## Test Coverage
+
+| Metric | Value |
+|--------|-------|
+| **Code Coverage** | 100% |
+| **Unit Tests** | 103 |
+| **Lines Covered** | 335/335 |
 
 ## Installation
 
@@ -135,6 +146,10 @@ Options:
 # Run tests
 cargo test
 
+# Run tests with coverage (requires cargo-tarpaulin)
+cargo install cargo-tarpaulin
+cargo tarpaulin --lib --fail-under 100
+
 # Run with clippy lints
 cargo clippy --all-targets --all-features -- -D warnings
 
@@ -143,6 +158,27 @@ cargo build --release
 
 # The binary will be at ./target/release/pr-comments
 ```
+
+### Pre-commit Hooks
+
+This project uses pre-commit hooks to ensure code quality:
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Install hooks
+pre-commit install
+
+# Run hooks manually
+pre-commit run --all-files
+```
+
+The following checks run on every commit:
+- `cargo fmt` - Code formatting
+- `cargo clippy` - Linting with warnings as errors
+- `cargo test` - Unit tests
+- `cargo tarpaulin` - 100% code coverage enforcement
 
 ## License
 

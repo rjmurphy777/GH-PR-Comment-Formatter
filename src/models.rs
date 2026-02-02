@@ -180,4 +180,21 @@ mod tests {
         comment.diff_hunk = String::new();
         assert_eq!(comment.get_code_snippet(10), "");
     }
+
+    #[test]
+    fn test_get_line_info_only_start_line() {
+        // Covers models.rs line 62: (None, Some(start)) case
+        let mut comment = create_test_comment();
+        comment.line_number = None;
+        comment.start_line = Some(15);
+        assert_eq!(comment.get_line_info(), "line 15");
+    }
+
+    #[test]
+    fn test_get_code_snippet_only_header() {
+        // Covers models.rs line 83: empty after filtering @@ lines
+        let mut comment = create_test_comment();
+        comment.diff_hunk = "@@ -10,5 +10,5 @@".to_string();
+        assert_eq!(comment.get_code_snippet(10), "");
+    }
 }

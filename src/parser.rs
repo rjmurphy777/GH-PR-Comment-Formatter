@@ -10,13 +10,8 @@ use std::collections::HashMap;
 ///
 /// Handles formats like "2026-01-30T23:06:02Z" and "2026-01-30T23:06:02.123Z"
 pub fn parse_datetime(dt_str: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
-    // Try parsing with fractional seconds first, then without
-    DateTime::parse_from_rfc3339(dt_str)
-        .map(|dt| dt.with_timezone(&Utc))
-        .or_else(|_| {
-            // Handle the case without fractional seconds
-            DateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%SZ").map(|dt| dt.with_timezone(&Utc))
-        })
+    // RFC3339 handles both with and without fractional seconds, and with Z suffix
+    DateTime::parse_from_rfc3339(dt_str).map(|dt| dt.with_timezone(&Utc))
 }
 
 /// Parses a single comment from GitHub API JSON into a PRComment.
