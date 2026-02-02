@@ -92,15 +92,9 @@ jobs:
         run: cargo install cargo-tarpaulin
 
       - name: Run coverage
-        run: cargo tarpaulin --lib --fail-under 100 --out Xml
+        run: cargo tarpaulin --lib --fail-under 100
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: cobertura.xml
-          fail_ci_if_error: false
 
   build:
     name: Build
