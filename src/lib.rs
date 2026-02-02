@@ -8,6 +8,7 @@ pub mod fetcher;
 pub mod formatter;
 pub mod models;
 pub mod parser;
+pub mod sanitizer;
 
 pub use cli::{Args, OutputFormat};
 pub use error::{GitHubAPIError, ParseError};
