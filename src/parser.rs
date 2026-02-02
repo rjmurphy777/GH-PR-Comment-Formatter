@@ -1,6 +1,7 @@
 //! JSON parsing and comment filtering functions.
 
 use crate::models::PRComment;
+use crate::sanitizer::strip_html;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -54,11 +55,11 @@ pub fn parse_comment(comment_data: &Value) -> Option<PRComment> {
         .unwrap_or("unknown")
         .to_string();
 
-    let body = comment_data
+    let raw_body = comment_data
         .get("body")
         .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+        .unwrap_or("");
+    let body = strip_html(raw_body).into_owned();
 
     let created_at_str = comment_data.get("created_at")?.as_str()?;
     let created_at = parse_datetime(created_at_str).ok()?;
