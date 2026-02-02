@@ -3,7 +3,7 @@
 use thiserror::Error;
 
 /// Errors that can occur when interacting with the GitHub API.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum GitHubAPIError {
     #[error("Failed to execute gh command: {0}")]
     CommandFailed(String),

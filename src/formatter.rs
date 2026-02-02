@@ -509,4 +509,103 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert!(parsed[0]["snippet"].is_null());
     }
+
+    #[test]
+    fn test_format_as_json_empty_snippet() {
+        // Covers formatter.rs line 278: empty snippet returns None
+        let comment = PRComment::new(
+            1,
+            "file1.rs".to_string(),
+            Some(10),
+            None,
+            "user1".to_string(),
+            "Test body".to_string(),
+            Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+            Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+            "".to_string(), // Empty diff hunk
+            "https://github.com/owner/repo/pull/1#discussion_r1".to_string(),
+        );
+        let comments = vec![comment];
+        let output = format_as_json(&comments, true, 10); // include_snippet=true but diff is empty
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(parsed[0]["snippet"].is_null());
+    }
+
+    #[test]
+    fn test_format_for_claude_sorts_by_line_then_date() {
+        // Covers formatter.rs lines 235-237: sorting by line_number then created_at
+        let comments = vec![
+            PRComment::new(
+                1,
+                "file1.rs".to_string(),
+                Some(10),
+                None,
+                "user1".to_string(),
+                "Earlier comment".to_string(),
+                Utc.with_ymd_and_hms(2024, 1, 15, 8, 0, 0).unwrap(),
+                Utc.with_ymd_and_hms(2024, 1, 15, 8, 0, 0).unwrap(),
+                "".to_string(),
+                "https://github.com/owner/repo/pull/1#discussion_r1".to_string(),
+            ),
+            PRComment::new(
+                2,
+                "file1.rs".to_string(),
+                Some(10), // Same line number
+                None,
+                "user2".to_string(),
+                "Later comment".to_string(),
+                Utc.with_ymd_and_hms(2024, 1, 15, 10, 0, 0).unwrap(), // Later time
+                Utc.with_ymd_and_hms(2024, 1, 15, 10, 0, 0).unwrap(),
+                "".to_string(),
+                "https://github.com/owner/repo/pull/1#discussion_r2".to_string(),
+            ),
+        ];
+        let output = format_for_claude(&comments, None, None, false, 10);
+        // Earlier comment should appear first in the output
+        let earlier_pos = output.find("Earlier comment").unwrap();
+        let later_pos = output.find("Later comment").unwrap();
+        assert!(
+            earlier_pos < later_pos,
+            "Comments should be sorted by date when line numbers are equal"
+        );
+    }
+
+    #[test]
+    fn test_format_comments_grouped_sorts_by_line_then_date() {
+        // Also tests the sorting logic in format_comments_grouped
+        let comments = vec![
+            PRComment::new(
+                1,
+                "file1.rs".to_string(),
+                Some(10),
+                None,
+                "user1".to_string(),
+                "Earlier comment".to_string(),
+                Utc.with_ymd_and_hms(2024, 1, 15, 8, 0, 0).unwrap(),
+                Utc.with_ymd_and_hms(2024, 1, 15, 8, 0, 0).unwrap(),
+                "".to_string(),
+                "https://github.com/owner/repo/pull/1#discussion_r1".to_string(),
+            ),
+            PRComment::new(
+                2,
+                "file1.rs".to_string(),
+                Some(10), // Same line number
+                None,
+                "user2".to_string(),
+                "Later comment".to_string(),
+                Utc.with_ymd_and_hms(2024, 1, 15, 10, 0, 0).unwrap(), // Later time
+                Utc.with_ymd_and_hms(2024, 1, 15, 10, 0, 0).unwrap(),
+                "".to_string(),
+                "https://github.com/owner/repo/pull/1#discussion_r2".to_string(),
+            ),
+        ];
+        let output = format_comments_grouped(&comments, false, 10);
+        // Earlier comment should appear first in the output
+        let earlier_pos = output.find("Earlier comment").unwrap();
+        let later_pos = output.find("Later comment").unwrap();
+        assert!(
+            earlier_pos < later_pos,
+            "Comments should be sorted by date when line numbers are equal"
+        );
+    }
 }
