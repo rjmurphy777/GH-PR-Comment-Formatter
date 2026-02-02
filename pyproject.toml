@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pr-comments"
+version = "0.1.0"
+description = "CLI tool to fetch and format GitHub PR comments for LLM consumption"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+pr-comments = "pr_comments.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v"
+markers = [
+    "integration: marks tests that require real GitHub API access (deselect with '-m \"not integration\"')",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pr_comments*"]
