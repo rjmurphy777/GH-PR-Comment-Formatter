@@ -1,7 +1,8 @@
 # pr-comments
 
-[![CI](https://github.com/rjmurphy777/Pull-request-fetcher/actions/workflows/ci.yml/badge.svg)](https://github.com/rjmurphy777/Pull-request-fetcher/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/rjmurphy777/Pull-request-fetcher/branch/main/graph/badge.svg)](https://codecov.io/gh/rjmurphy777/Pull-request-fetcher)
+[![CI](https://github.com/rjmurphy777/GH-PR-Comment-Formatter/actions/workflows/ci.yml/badge.svg)](https://github.com/rjmurphy777/GH-PR-Comment-Formatter/actions/workflows/ci.yml)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-103%20passing-brightgreen)
 
 A CLI tool to fetch and format GitHub PR comments for LLM consumption.
 
@@ -9,7 +10,7 @@ A CLI tool to fetch and format GitHub PR comments for LLM consumption.
 
 | Metric | Value |
 |--------|-------|
-| **Code Coverage** | 100% |
+| **Code Coverage** | 100% (enforced in CI) |
 | **Unit Tests** | 103 |
 | **Lines Covered** | 335/335 |
 
