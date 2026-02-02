@@ -1,34 +1,17 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
+# Go
+*.exe
+*.exe~
+*.dll
 *.so
-.Python
-build/
-develop-eggs/
+*.dylib
+*.test
+*.out
+go-pr-comments/pr-comments
+go-pr-comments/pr-comments-*
+
+# Build artifacts
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
-ENV/
-env/
-
-# Testing
-.coverage
-.pytest_cache/
-htmlcov/
+build/
 
 # IDE
 .idea/
@@ -36,11 +19,6 @@ htmlcov/
 *.swp
 *.swo
 
-# Pre-commit
-.pre-commit-config.yaml.*.bak
-
-# Mypy
-.mypy_cache/
-
-# Ruff
-.ruff_cache/
+# OS
+.DS_Store
+Thumbs.db
