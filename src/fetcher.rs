@@ -322,8 +322,8 @@ mod tests {
         let result = runner.run("rate_limit");
         // This may succeed or fail depending on gh auth, but we try to cover the path
         // If gh is authenticated, this should succeed and cover line 30
-        if result.is_ok() {
-            assert!(result.unwrap().contains("resources"));
+        if let Ok(output) = result {
+            assert!(output.contains("resources"));
         }
         // If it fails, that's okay - we've tested that path elsewhere
     }
