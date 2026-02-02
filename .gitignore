@@ -1,34 +1,6 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
-ENV/
-env/
-
-# Testing
-.coverage
-.pytest_cache/
-htmlcov/
+# Rust
+/target/
+**/*.rs.bk
 
 # IDE
 .idea/
@@ -36,11 +8,8 @@ htmlcov/
 *.swp
 *.swo
 
+# macOS
+.DS_Store
+
 # Pre-commit
 .pre-commit-config.yaml.*.bak
-
-# Mypy
-.mypy_cache/
-
-# Ruff
-.ruff_cache/

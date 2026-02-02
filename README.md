@@ -1,289 +1,149 @@
-# 🚀 PR Comments CLI
+# pr-comments
 
-> **Transform your GitHub PR review comments into LLM-ready context in seconds!**
+A CLI tool to fetch and format GitHub PR comments for LLM consumption.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 99](https://img.shields.io/badge/tests-99%20passing-brightgreen.svg)](#testing)
-[![Coverage: 98%](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](#testing)
+## Installation
 
----
+### From Source
 
-## ✨ What is this?
-
-**PR Comments CLI** is a powerful command-line tool that fetches GitHub Pull Request review comments and formats them perfectly for consumption by Large Language Models (LLMs) like Claude, GPT-4, and others.
-
-Ever wanted to ask an AI to help you address PR feedback? Now you can pipe those comments directly into your favorite LLM with all the context it needs! 🎯
-
----
-
-## 🎬 Quick Start
+Requires [Rust](https://rustup.rs/) to be installed.
 
 ```bash
-# Install the package
-pip install -e .
-
-# Fetch PR comments with a URL
-pr-comments https://github.com/owner/repo/pull/123
-
-# Or use the shorthand format
-pr-comments owner/repo#123
+cargo install --path .
 ```
 
-**That's it!** You'll get beautifully formatted, context-rich output ready for any LLM. 🎉
+### Pre-built Binary
 
----
+Download the pre-built binary from the releases page and add it to your PATH.
 
-## 🌟 Features
+## Prerequisites
 
-### 📥 **Flexible Input**
-- Full GitHub PR URLs: `https://github.com/owner/repo/pull/123`
-- Shorthand notation: `owner/repo#123`
-- Explicit flags: `--owner`, `--repo`, `--pr-number`
+- [GitHub CLI (gh)](https://cli.github.com/) must be installed and authenticated
 
-### 📤 **Multiple Output Formats**
+```bash
+# Install gh CLI
+brew install gh  # macOS
+# or see https://cli.github.com/manual/installation
 
-| Format | Description | Best For |
-|--------|-------------|----------|
-| `claude` | 🤖 LLM-optimized with full context | AI assistants |
-| `grouped` | 📁 Organized by file | Code review |
-| `flat` | 📋 Chronological list | Timeline view |
-| `minimal` | ⚡ Quick overview | Fast scanning |
-| `json` | 🔧 Raw data | Automation |
+# Authenticate
+gh auth login
+```
 
-### 🔍 **Powerful Filtering**
-- **`--author`** - Filter by reviewer username
-- **`--most-recent`** - Only the latest comment per file
-
-### 🎨 **Rich Code Context**
-- Automatic code snippet extraction from diffs
-- Configurable snippet length (`--snippet-lines`)
-- Full file path and line number tracking
-
----
-
-## 📖 Usage Examples
+## Usage
 
 ### Basic Usage
 
 ```bash
-# Get all comments formatted for Claude
-pr-comments https://github.com/facebook/react/pull/27632
+# Using PR URL
+pr-comments https://github.com/owner/repo/pull/123
 
-# Save output to a file
-pr-comments owner/repo#123 --output comments.md
+# Using shorthand format
+pr-comments owner/repo#123
+
+# Using explicit arguments
+pr-comments --owner owner --repo repo --pr-number 123
 ```
 
-### Filtering Comments
+### Output Formats
 
 ```bash
-# Only show comments from a specific reviewer
-pr-comments owner/repo#123 --author "senior-dev"
+# Claude format (default) - optimized for LLM consumption
+pr-comments owner/repo#123 --format claude
 
-# Get the most recent comment per file
-pr-comments owner/repo#123 --most-recent
-```
-
-### Different Output Formats
-
-```bash
-# Grouped by file (great for systematic review)
+# Grouped by file
 pr-comments owner/repo#123 --format grouped
 
-# Minimal overview (quick scan)
+# Flat list sorted by date
+pr-comments owner/repo#123 --format flat
+
+# Minimal overview
 pr-comments owner/repo#123 --format minimal
 
-# JSON for scripting
-pr-comments owner/repo#123 --format json | jq '.[] | .file'
+# JSON output for programmatic use
+pr-comments owner/repo#123 --format json
 ```
 
-### Customizing Code Snippets
+### Filtering
 
 ```bash
-# Show more context (20 lines per snippet)
-pr-comments owner/repo#123 --snippet-lines 20
+# Filter by comment author
+pr-comments owner/repo#123 --author username
 
-# Hide code snippets entirely
+# Show only the most recent comment per file
+pr-comments owner/repo#123 --most-recent
+
+# Combine filters
+pr-comments owner/repo#123 --author username --most-recent
+```
+
+### Code Snippet Options
+
+```bash
+# Exclude code snippets from output
 pr-comments owner/repo#123 --no-snippet
+
+# Customize snippet length (default: 15 lines)
+pr-comments owner/repo#123 --snippet-lines 25
 ```
 
----
-
-## 🛠️ Installation
-
-### Prerequisites
-
-- **Python 3.10+**
-- **GitHub CLI (`gh`)** - [Install here](https://cli.github.com/)
-- Authenticated with `gh auth login`
-
-### Install from Source
+### Output to File
 
 ```bash
-git clone https://github.com/your-org/pr-comments.git
-cd pr-comments
-pip install -e .
+# Write output to a file
+pr-comments owner/repo#123 --output review-comments.md
 ```
 
-### For Development
+## Examples
 
 ```bash
-pip install -e ".[dev]"
+# Get all review comments on a PR in Claude format
+pr-comments facebook/react#12345
+
+# Get comments from a specific reviewer in minimal format
+pr-comments rust-lang/rust#98765 --author bors --format minimal
+
+# Export comments as JSON for processing
+pr-comments kubernetes/kubernetes#111222 --format json --output comments.json
 ```
 
----
-
-## 🎯 Output Formats Deep Dive
-
-### 🤖 Claude Format (Default)
-
-The `claude` format is specifically designed for AI consumption:
-
-```markdown
-# Pull Request Review Comments
-**PR Title:** Add authentication middleware
-**PR URL:** https://github.com/owner/repo/pull/123
-**Total Comments:** 5
-**Files Affected:** 3
-
-Below are the review comments that need to be addressed...
-
----
-
-## File: `src/auth/middleware.py`
-
-### line 42
-**Reviewer:** alice
-
-**Code being reviewed:**
-```python
-def authenticate(request):
-    token = request.headers.get('Authorization')
-    # ... more context
-```
-
-**Review comment:**
-Consider adding rate limiting here to prevent brute force attacks.
-
----
-```
-
-### 📁 Grouped Format
-
-Comments organized by file, perfect for systematic code review:
-
-```markdown
-# PR Comments Summary
-Total comments: 12
-Files with comments: 4
-
-## src/api/routes.py
-(3 comment(s))
-
-### src/api/routes.py (line 15)
-**Author:** bob
-...
-```
-
-### ⚡ Minimal Format
-
-Quick overview when you just need the gist:
+## All Options
 
 ```
-PR Comments: 12 total across 4 files
+Usage: pr-comments [OPTIONS] [PR]
 
-📄 src/api/routes.py
-  └─ line 15 (bob): Consider using async here...
-  └─ line 42 (alice): This could be simplified...
+Arguments:
+  [PR]  PR URL or owner/repo#number format
 
-📄 src/models/user.py
-  └─ line 8 (charlie): Add validation for email...
+Options:
+  -o, --owner <OWNER>              Repository owner
+  -r, --repo <REPO>                Repository name
+  -n, --pr-number <PR_NUMBER>      Pull request number
+  -a, --author <AUTHOR>            Filter by author username
+  -m, --most-recent                Show only newest comment per file
+  -f, --format <FORMAT>            Output format [default: claude]
+                                   [possible values: claude, grouped, flat, minimal, json]
+      --no-snippet                 Exclude code snippets
+      --snippet-lines <LINES>      Max lines in snippets [default: 15]
+  -O, --output <OUTPUT>            Write output to file
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
----
-
-## 🧪 Testing
-
-This project is **extensively tested** with real-world scenarios:
+## Development
 
 ```bash
-# Run all tests
-pytest
+# Run tests
+cargo test
 
-# Run with coverage report
-pytest --cov=pr_comments --cov-report=term-missing
+# Run with clippy lints
+cargo clippy --all-targets --all-features -- -D warnings
 
-# Skip integration tests (no GitHub API)
-pytest -m "not integration"
+# Build release binary
+cargo build --release
+
+# The binary will be at ./target/release/pr-comments
 ```
 
-| Metric | Value |
-|--------|-------|
-| Total Tests | 99 |
-| Coverage | 98% |
-| Integration Tests | ✅ Real GitHub PRs |
+## License
 
----
-
-## 🏗️ Architecture
-
-```
-pr_comments/
-├── cli.py          # 🎮 Command-line interface
-├── fetcher.py      # 🌐 GitHub API integration via `gh`
-├── parser.py       # 🔄 JSON parsing & filtering
-├── formatter.py    # ✨ Output formatting magic
-└── models.py       # 📦 Data structures
-```
-
-The tool leverages the **GitHub CLI (`gh`)** for authentication and API access, meaning:
-- No API tokens to manage
-- Automatic rate limit handling
-- Works with your existing GitHub auth
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 💡 Pro Tips
-
-1. **Pipe to `pbcopy`** (macOS) for instant clipboard access:
-   ```bash
-   pr-comments owner/repo#123 | pbcopy
-   ```
-
-2. **Combine with AI CLI tools**:
-   ```bash
-   pr-comments owner/repo#123 | claude-cli
-   ```
-
-3. **Use JSON format for scripts**:
-   ```bash
-   pr-comments owner/repo#123 -f json | jq '.[] | select(.author == "bot")'
-   ```
-
----
-
-<div align="center">
-
-**Made with ❤️ for developers who love automation**
-
-🌟 **Star this repo** if you find it useful! 🌟
-
-</div>
+MIT
