@@ -6,14 +6,6 @@
 
 A CLI tool to fetch and format GitHub PR comments for LLM consumption.
 
-## Test Coverage
-
-| Metric | Value |
-|--------|-------|
-| **Code Coverage** | 100% (enforced in CI) |
-| **Unit Tests** | 103 |
-| **Lines Covered** | 335/335 |
-
 ## Installation
 
 ### From Source
