@@ -3,12 +3,12 @@
 use clap::Parser;
 use pr_comments::{
     cli::{resolve_pr_args, Args, OutputFormat},
-    fetcher::{fetch_pr_comments, fetch_pr_info},
+    fetcher::{fetch_pr_comments, fetch_pr_info, fetch_pr_reviews},
     formatter::{
         format_as_json, format_comments_flat, format_comments_grouped, format_comments_minimal,
         format_for_claude,
     },
-    parser::{filter_by_author, get_most_recent_per_file, parse_comments},
+    parser::{filter_by_author, get_most_recent_per_file, parse_comments, parse_review_comments},
 };
 use std::fs;
 use std::io::{self, Write};
@@ -30,12 +30,17 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // Resolve PR arguments
     let (owner, repo, pr_number) = resolve_pr_args(&args)?;
 
-    // Fetch comments and PR info
+    // Fetch line-specific comments, reviews, and PR info
     let raw_comments = fetch_pr_comments(&owner, &repo, pr_number)?;
+    let raw_reviews = fetch_pr_reviews(&owner, &repo, pr_number)?;
     let pr_info = fetch_pr_info(&owner, &repo, pr_number)?;
 
-    // Parse comments
+    // Parse line-specific comments
     let mut comments = parse_comments(&raw_comments);
+
+    // Parse and merge review-level comments (reviews with body text)
+    let review_comments = parse_review_comments(&raw_reviews);
+    comments.extend(review_comments);
 
     // Apply author filter
     if args.author.is_some() {

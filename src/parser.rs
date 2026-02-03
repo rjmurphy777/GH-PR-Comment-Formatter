@@ -93,6 +93,62 @@ pub fn parse_comments(comments_data: &[Value]) -> Vec<PRComment> {
     comments_data.iter().filter_map(parse_comment).collect()
 }
 
+/// Parses a single review from GitHub API JSON into a PRComment.
+///
+/// Reviews are top-level comments attached to a review submission,
+/// not to specific lines of code. Only reviews with non-empty body are returned.
+pub fn parse_review_comment(review_data: &Value) -> Option<PRComment> {
+    let id = review_data.get("id")?.as_i64()?;
+
+    // Only include reviews that have a body (non-empty comment)
+    let raw_body = review_data.get("body").and_then(|v| v.as_str())?;
+    if raw_body.trim().is_empty() {
+        return None;
+    }
+    let body = strip_html(raw_body).into_owned();
+
+    // Extract author from user.login
+    let author = review_data
+        .get("user")
+        .and_then(|u| u.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let submitted_at_str = review_data.get("submitted_at")?.as_str()?;
+    let submitted_at = parse_datetime(submitted_at_str).ok()?;
+
+    let html_url = review_data
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Review-level comments don't have file paths or line numbers
+    Some(PRComment::new(
+        id,
+        String::new(), // No file path for review-level comments
+        None,          // No line number
+        None,          // No start line
+        author,
+        body,
+        submitted_at,
+        submitted_at,  // Use submitted_at for both created and updated
+        String::new(), // No diff hunk
+        html_url,
+    ))
+}
+
+/// Parses multiple reviews from GitHub API JSON into PRComments.
+///
+/// Only reviews with non-empty body text are included.
+pub fn parse_review_comments(reviews_data: &[Value]) -> Vec<PRComment> {
+    reviews_data
+        .iter()
+        .filter_map(parse_review_comment)
+        .collect()
+}
+
 /// Filters comments by author username.
 ///
 /// If author is None or empty, returns all comments.
@@ -394,5 +450,133 @@ mod tests {
     fn test_group_by_file_empty() {
         let grouped = group_by_file(&[]);
         assert!(grouped.is_empty());
+    }
+
+    #[test]
+    fn test_parse_review_comment_success() {
+        let data = json!({
+            "id": 12345,
+            "body": "This is a review-level comment",
+            "user": {"login": "reviewer"},
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-12345",
+            "state": "COMMENTED"
+        });
+
+        let comment = parse_review_comment(&data).unwrap();
+        assert_eq!(comment.id, 12345);
+        assert_eq!(comment.body, "This is a review-level comment");
+        assert_eq!(comment.author, "reviewer");
+        assert!(comment.file_path.is_empty());
+        assert!(comment.line_number.is_none());
+        assert!(comment.diff_hunk.is_empty());
+    }
+
+    #[test]
+    fn test_parse_review_comment_empty_body() {
+        let data = json!({
+            "id": 12345,
+            "body": "",
+            "user": {"login": "reviewer"},
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-12345"
+        });
+
+        let comment = parse_review_comment(&data);
+        assert!(comment.is_none());
+    }
+
+    #[test]
+    fn test_parse_review_comment_whitespace_only_body() {
+        let data = json!({
+            "id": 12345,
+            "body": "   \n\t  ",
+            "user": {"login": "reviewer"},
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-12345"
+        });
+
+        let comment = parse_review_comment(&data);
+        assert!(comment.is_none());
+    }
+
+    #[test]
+    fn test_parse_review_comment_null_body() {
+        let data = json!({
+            "id": 12345,
+            "body": null,
+            "user": {"login": "reviewer"},
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-12345"
+        });
+
+        let comment = parse_review_comment(&data);
+        assert!(comment.is_none());
+    }
+
+    #[test]
+    fn test_parse_review_comment_missing_user() {
+        let data = json!({
+            "id": 12345,
+            "body": "Some review comment",
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-12345"
+        });
+
+        let comment = parse_review_comment(&data).unwrap();
+        assert_eq!(comment.author, "unknown");
+    }
+
+    #[test]
+    fn test_parse_review_comments_multiple() {
+        let data = vec![
+            json!({
+                "id": 1,
+                "body": "First review",
+                "user": {"login": "user1"},
+                "submitted_at": "2024-01-15T10:30:00Z",
+                "html_url": ""
+            }),
+            json!({
+                "id": 2,
+                "body": "", // Empty body - should be filtered out
+                "user": {"login": "user2"},
+                "submitted_at": "2024-01-15T11:30:00Z",
+                "html_url": ""
+            }),
+            json!({
+                "id": 3,
+                "body": "Third review",
+                "user": {"login": "user3"},
+                "submitted_at": "2024-01-15T12:30:00Z",
+                "html_url": ""
+            }),
+        ];
+
+        let comments = parse_review_comments(&data);
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0].id, 1);
+        assert_eq!(comments[1].id, 3);
+    }
+
+    #[test]
+    fn test_parse_review_comments_empty() {
+        let comments = parse_review_comments(&[]);
+        assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn test_parse_review_comment_strips_html() {
+        let data = json!({
+            "id": 12345,
+            "body": "<p>This is a <strong>review</strong> comment</p>",
+            "user": {"login": "reviewer"},
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": ""
+        });
+
+        let comment = parse_review_comment(&data).unwrap();
+        assert!(!comment.body.contains("<p>"));
+        assert!(!comment.body.contains("<strong>"));
     }
 }
