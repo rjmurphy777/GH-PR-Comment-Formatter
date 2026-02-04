@@ -175,10 +175,14 @@ pub fn format_comments_minimal(comments: &[PRComment]) -> String {
 }
 
 /// Formats comments for Claude/LLM consumption with full context.
+///
+/// The `pr_node_id` is the GraphQL node ID for the PR (e.g., "PR_kwDO...").
+/// This is needed when replying to comments via the GitHub GraphQL API.
 pub fn format_for_claude(
     comments: &[PRComment],
     pr_url: Option<&str>,
     pr_title: Option<&str>,
+    pr_node_id: Option<&str>,
     include_snippet: bool,
     snippet_lines: usize,
 ) -> String {
@@ -197,6 +201,9 @@ pub fn format_for_claude(
     }
     if let Some(url) = pr_url {
         output.push_str(&format!("**PR URL:** {url}\n"));
+    }
+    if let Some(node_id) = pr_node_id {
+        output.push_str(&format!("**PR Node ID:** `{node_id}` (for GraphQL API)\n"));
     }
 
     // Summary
@@ -264,6 +271,9 @@ pub fn format_for_claude(
 }
 
 /// Formats comments as JSON for programmatic use.
+///
+/// Includes `node_id` field which is the GraphQL node ID needed for
+/// replying to comments via the GitHub GraphQL API (use as `inReplyTo`).
 pub fn format_as_json(
     comments: &[PRComment],
     include_snippet: bool,
@@ -289,7 +299,8 @@ pub fn format_as_json(
                 "author": c.author,
                 "body": c.body,
                 "snippet": snippet,
-                "url": c.html_url
+                "url": c.html_url,
+                "node_id": c.node_id
             })
         })
         .collect();
@@ -305,6 +316,7 @@ mod tests {
     fn create_test_comment(id: i64, file: &str, line: Option<i32>, author: &str) -> PRComment {
         PRComment::new(
             id,
+            Some(format!("PRRC_test{id}")),
             file.to_string(),
             line,
             None,
@@ -452,14 +464,14 @@ mod tests {
     #[test]
     fn test_format_for_claude_includes_header() {
         let comments = vec![create_test_comment(1, "file1.rs", Some(10), "user1")];
-        let output = format_for_claude(&comments, None, None, true, 15);
+        let output = format_for_claude(&comments, None, None, None, true, 15);
         assert!(output.contains("Pull Request Review Comments"));
     }
 
     #[test]
     fn test_format_for_claude_includes_pr_title() {
         let comments = vec![create_test_comment(1, "file1.rs", Some(10), "user1")];
-        let output = format_for_claude(&comments, None, Some("Test PR Title"), true, 15);
+        let output = format_for_claude(&comments, None, Some("Test PR Title"), None, true, 15);
         assert!(output.contains("Test PR Title"));
     }
 
@@ -470,6 +482,7 @@ mod tests {
             &comments,
             Some("https://github.com/owner/repo/pull/123"),
             None,
+            None,
             true,
             15,
         );
@@ -477,16 +490,24 @@ mod tests {
     }
 
     #[test]
+    fn test_format_for_claude_includes_pr_node_id() {
+        let comments = vec![create_test_comment(1, "file1.rs", Some(10), "user1")];
+        let output = format_for_claude(&comments, None, None, Some("PR_kwDOE2CVus7test"), true, 15);
+        assert!(output.contains("PR_kwDOE2CVus7test"));
+        assert!(output.contains("PR Node ID"));
+    }
+
+    #[test]
     fn test_format_for_claude_includes_instructions() {
         let comments = vec![create_test_comment(1, "file1.rs", Some(10), "user1")];
-        let output = format_for_claude(&comments, None, None, true, 15);
+        let output = format_for_claude(&comments, None, None, None, true, 15);
         assert!(output.contains("Instructions"));
         assert!(output.contains("address"));
     }
 
     #[test]
     fn test_format_for_claude_empty() {
-        let output = format_for_claude(&[], None, None, true, 15);
+        let output = format_for_claude(&[], None, None, None, true, 15);
         assert!(output.contains("No comments found"));
     }
 
@@ -515,6 +536,7 @@ mod tests {
         // Covers formatter.rs line 278: empty snippet returns None
         let comment = PRComment::new(
             1,
+            Some("PRRC_test1".to_string()),
             "file1.rs".to_string(),
             Some(10),
             None,
@@ -537,6 +559,7 @@ mod tests {
         let comments = vec![
             PRComment::new(
                 1,
+                Some("PRRC_test1".to_string()),
                 "file1.rs".to_string(),
                 Some(10),
                 None,
@@ -549,6 +572,7 @@ mod tests {
             ),
             PRComment::new(
                 2,
+                Some("PRRC_test2".to_string()),
                 "file1.rs".to_string(),
                 Some(10), // Same line number
                 None,
@@ -560,7 +584,7 @@ mod tests {
                 "https://github.com/owner/repo/pull/1#discussion_r2".to_string(),
             ),
         ];
-        let output = format_for_claude(&comments, None, None, false, 10);
+        let output = format_for_claude(&comments, None, None, None, false, 10);
         // Earlier comment should appear first in the output
         let earlier_pos = output.find("Earlier comment").unwrap();
         let later_pos = output.find("Later comment").unwrap();
@@ -576,6 +600,7 @@ mod tests {
         let comments = vec![
             PRComment::new(
                 1,
+                Some("PRRC_test1".to_string()),
                 "file1.rs".to_string(),
                 Some(10),
                 None,
@@ -588,6 +613,7 @@ mod tests {
             ),
             PRComment::new(
                 2,
+                Some("PRRC_test2".to_string()),
                 "file1.rs".to_string(),
                 Some(10), // Same line number
                 None,
@@ -607,5 +633,34 @@ mod tests {
             earlier_pos < later_pos,
             "Comments should be sorted by date when line numbers are equal"
         );
+    }
+
+    #[test]
+    fn test_format_as_json_includes_node_id() {
+        let comments = vec![create_test_comment(1, "file1.rs", Some(10), "user1")];
+        let output = format_as_json(&comments, true, 10);
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(parsed[0]["node_id"], "PRRC_test1");
+    }
+
+    #[test]
+    fn test_format_as_json_node_id_none() {
+        let comment = PRComment::new(
+            1,
+            None, // No node_id
+            "file1.rs".to_string(),
+            Some(10),
+            None,
+            "user1".to_string(),
+            "Test body".to_string(),
+            Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+            Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+            "".to_string(),
+            "https://github.com/owner/repo/pull/1#discussion_r1".to_string(),
+        );
+        let comments = vec![comment];
+        let output = format_as_json(&comments, true, 10);
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(parsed[0]["node_id"].is_null());
     }
 }

@@ -61,6 +61,11 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         .get("title")
         .and_then(|v| v.as_str())
         .map(String::from);
+    // GraphQL node ID for the PR (used for replying to comments via GraphQL API)
+    let pr_node_id = pr_info
+        .get("node_id")
+        .and_then(|v| v.as_str())
+        .map(String::from);
 
     // Format output
     let include_snippet = !args.no_snippet;
@@ -69,6 +74,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             &comments,
             pr_url.as_deref(),
             pr_title.as_deref(),
+            pr_node_id.as_deref(),
             include_snippet,
             args.snippet_lines,
         ),

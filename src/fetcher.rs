@@ -14,7 +14,8 @@ pub struct GhCliRunner;
 
 impl CommandRunner for GhCliRunner {
     fn run(&self, endpoint: &str) -> Result<String, GitHubAPIError> {
-        let output = Command::new("gh")
+        let gh_cli = std::env::var("GH_CLI").unwrap_or_else(|_| "gh".to_string());
+        let output = Command::new(&gh_cli)
             .args(["api", endpoint])
             .output()
             .map_err(map_io_error)?;
