@@ -18,6 +18,12 @@ pub fn parse_datetime(dt_str: &str) -> Result<DateTime<Utc>, chrono::ParseError>
 pub fn parse_comment(comment_data: &Value) -> Option<PRComment> {
     let id = comment_data.get("id")?.as_i64()?;
 
+    // GraphQL node ID for this comment (used for replying via GraphQL API)
+    let node_id = comment_data
+        .get("node_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     let file_path = comment_data
         .get("path")
         .and_then(|v| v.as_str())
@@ -76,6 +82,7 @@ pub fn parse_comment(comment_data: &Value) -> Option<PRComment> {
 
     Some(PRComment::new(
         id,
+        node_id,
         file_path,
         line_number,
         start_line,
@@ -99,6 +106,12 @@ pub fn parse_comments(comments_data: &[Value]) -> Vec<PRComment> {
 /// not to specific lines of code. Only reviews with non-empty body are returned.
 pub fn parse_review_comment(review_data: &Value) -> Option<PRComment> {
     let id = review_data.get("id")?.as_i64()?;
+
+    // GraphQL node ID for this review
+    let node_id = review_data
+        .get("node_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // Only include reviews that have a body (non-empty comment)
     let raw_body = review_data.get("body").and_then(|v| v.as_str())?;
@@ -127,6 +140,7 @@ pub fn parse_review_comment(review_data: &Value) -> Option<PRComment> {
     // Review-level comments don't have file paths or line numbers
     Some(PRComment::new(
         id,
+        node_id,
         String::new(), // No file path for review-level comments
         None,          // No line number
         None,          // No start line
@@ -350,6 +364,7 @@ mod tests {
         vec![
             PRComment::new(
                 1,
+                Some("PRRC_test1".to_string()),
                 "file1.rs".to_string(),
                 Some(10),
                 None,
@@ -362,6 +377,7 @@ mod tests {
             ),
             PRComment::new(
                 2,
+                Some("PRRC_test2".to_string()),
                 "file1.rs".to_string(),
                 Some(20),
                 None,
@@ -374,6 +390,7 @@ mod tests {
             ),
             PRComment::new(
                 3,
+                Some("PRRC_test3".to_string()),
                 "file2.rs".to_string(),
                 Some(5),
                 None,
@@ -578,5 +595,71 @@ mod tests {
         let comment = parse_review_comment(&data).unwrap();
         assert!(!comment.body.contains("<p>"));
         assert!(!comment.body.contains("<strong>"));
+    }
+
+    #[test]
+    fn test_parse_comment_with_node_id() {
+        let data = json!({
+            "id": 123,
+            "node_id": "PRRC_kwDOE2CVus5test",
+            "path": "src/main.rs",
+            "line": 42,
+            "user": {"login": "testuser"},
+            "body": "Test comment",
+            "created_at": "2024-01-15T10:30:00Z",
+            "updated_at": "2024-01-15T10:30:00Z",
+            "diff_hunk": "",
+            "html_url": ""
+        });
+
+        let comment = parse_comment(&data).unwrap();
+        assert_eq!(comment.node_id, Some("PRRC_kwDOE2CVus5test".to_string()));
+    }
+
+    #[test]
+    fn test_parse_comment_without_node_id() {
+        let data = json!({
+            "id": 123,
+            "path": "src/main.rs",
+            "line": 42,
+            "user": {"login": "testuser"},
+            "body": "Test comment",
+            "created_at": "2024-01-15T10:30:00Z",
+            "updated_at": "2024-01-15T10:30:00Z",
+            "diff_hunk": "",
+            "html_url": ""
+        });
+
+        let comment = parse_comment(&data).unwrap();
+        assert_eq!(comment.node_id, None);
+    }
+
+    #[test]
+    fn test_parse_review_comment_with_node_id() {
+        let data = json!({
+            "id": 12345,
+            "node_id": "PRR_kwDOE2CVus5review",
+            "body": "Review comment",
+            "user": {"login": "reviewer"},
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": ""
+        });
+
+        let comment = parse_review_comment(&data).unwrap();
+        assert_eq!(comment.node_id, Some("PRR_kwDOE2CVus5review".to_string()));
+    }
+
+    #[test]
+    fn test_parse_review_comment_without_node_id() {
+        let data = json!({
+            "id": 12345,
+            "body": "Review comment",
+            "user": {"login": "reviewer"},
+            "submitted_at": "2024-01-15T10:30:00Z",
+            "html_url": ""
+        });
+
+        let comment = parse_review_comment(&data).unwrap();
+        assert_eq!(comment.node_id, None);
     }
 }

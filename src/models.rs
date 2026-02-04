@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PRComment {
     pub id: i64,
+    /// GraphQL node ID for this comment (e.g., "PRRC_kwDO..."). Used for replying via GraphQL.
+    pub node_id: Option<String>,
     pub file_path: String,
     pub line_number: Option<i32>,
     pub start_line: Option<i32>,
@@ -23,6 +25,7 @@ impl PRComment {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: i64,
+        node_id: Option<String>,
         file_path: String,
         line_number: Option<i32>,
         start_line: Option<i32>,
@@ -35,6 +38,7 @@ impl PRComment {
     ) -> Self {
         Self {
             id,
+            node_id,
             file_path,
             line_number,
             start_line,
@@ -102,6 +106,7 @@ mod tests {
     fn create_test_comment() -> PRComment {
         PRComment::new(
             1,
+            Some("PRRC_kwDOtest123".to_string()),
             "src/main.rs".to_string(),
             Some(42),
             None,
