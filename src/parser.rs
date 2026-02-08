@@ -1,6 +1,9 @@
 //! JSON parsing and comment filtering functions.
 
-use crate::models::PRComment;
+use crate::error::GitHubAPIError;
+use crate::models::{
+    CheckConclusion, CheckStatus, CheckType, ChecksReport, PRComment, RollupState,
+};
 use crate::sanitizer::strip_html;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -205,6 +208,188 @@ pub fn group_by_file(comments: &[PRComment]) -> HashMap<String, Vec<&PRComment>>
     }
 
     grouped
+}
+
+/// Parses a GraphQL response into a ChecksReport.
+pub fn parse_checks_response(response: &Value) -> Result<ChecksReport, GitHubAPIError> {
+    let pr = response
+        .pointer("/data/repository/pullRequest")
+        .ok_or_else(|| {
+            GitHubAPIError::ParseError("Missing pullRequest in GraphQL response".to_string())
+        })?;
+
+    let pr_title = pr.get("title").and_then(|v| v.as_str()).map(String::from);
+    let pr_url = pr.get("url").and_then(|v| v.as_str()).map(String::from);
+
+    let commit = pr
+        .pointer("/commits/nodes/0/commit")
+        .ok_or_else(|| GitHubAPIError::ParseError("Missing commit data".to_string()))?;
+
+    let rollup = commit.get("statusCheckRollup");
+
+    let rollup_state = rollup
+        .and_then(|r| r.get("state"))
+        .and_then(|s| s.as_str())
+        .map(parse_rollup_state)
+        .unwrap_or(RollupState::Unknown);
+
+    let checks = rollup
+        .and_then(|r| r.pointer("/contexts/nodes"))
+        .and_then(|n| n.as_array())
+        .map(|nodes| nodes.iter().filter_map(parse_check_node).collect())
+        .unwrap_or_default();
+
+    Ok(ChecksReport {
+        pr_title,
+        pr_url,
+        rollup_state,
+        checks,
+    })
+}
+
+/// Parses a single check node, dispatching on __typename.
+fn parse_check_node(node: &Value) -> Option<CheckStatus> {
+    let typename = node.get("__typename")?.as_str()?;
+    match typename {
+        "CheckRun" => parse_check_run(node),
+        "StatusContext" => parse_status_context(node),
+        _ => None,
+    }
+}
+
+/// Parses a CheckRun node from the GraphQL response.
+fn parse_check_run(node: &Value) -> Option<CheckStatus> {
+    let name = node.get("name")?.as_str()?.to_string();
+    let status = node.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let conclusion = node
+        .get("conclusion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let check_conclusion = parse_check_conclusion(status, conclusion);
+    let required = node
+        .get("isRequired")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let details_url = node
+        .get("detailsUrl")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let started_at = node
+        .get("startedAt")
+        .and_then(|v| v.as_str())
+        .and_then(|s| parse_datetime(s).ok());
+    let completed_at = node
+        .get("completedAt")
+        .and_then(|v| v.as_str())
+        .and_then(|s| parse_datetime(s).ok());
+
+    let app_name = node
+        .pointer("/checkSuite/app/slug")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let workflow_name = node
+        .pointer("/checkSuite/workflowRun/workflow/name")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    Some(CheckStatus {
+        name,
+        conclusion: check_conclusion,
+        required,
+        description: None,
+        details_url,
+        started_at,
+        completed_at,
+        check_type: CheckType::CheckRun,
+        workflow_name,
+        app_name,
+    })
+}
+
+/// Parses a StatusContext node from the GraphQL response.
+fn parse_status_context(node: &Value) -> Option<CheckStatus> {
+    let name = node.get("context")?.as_str()?.to_string();
+    let state = node.get("state").and_then(|v| v.as_str()).unwrap_or("");
+    let conclusion = parse_status_state(state);
+    let required = node
+        .get("isRequired")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let description = node
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let details_url = node
+        .get("targetUrl")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let created_at = node
+        .get("createdAt")
+        .and_then(|v| v.as_str())
+        .and_then(|s| parse_datetime(s).ok());
+
+    Some(CheckStatus {
+        name,
+        conclusion,
+        required,
+        description,
+        details_url,
+        started_at: created_at,
+        completed_at: None,
+        check_type: CheckType::StatusContext,
+        workflow_name: None,
+        app_name: None,
+    })
+}
+
+/// Maps CheckRun status + conclusion to a CheckConclusion.
+fn parse_check_conclusion(status: &str, conclusion: &str) -> CheckConclusion {
+    // If status is not COMPLETED, the check is still running
+    if status != "COMPLETED" && !status.is_empty() {
+        return match status {
+            "IN_PROGRESS" | "QUEUED" | "REQUESTED" | "WAITING" | "PENDING" => {
+                CheckConclusion::Pending
+            }
+            _ => CheckConclusion::Unknown,
+        };
+    }
+
+    match conclusion {
+        "SUCCESS" => CheckConclusion::Success,
+        "FAILURE" => CheckConclusion::Failure,
+        "SKIPPED" => CheckConclusion::Skipped,
+        "CANCELLED" => CheckConclusion::Cancelled,
+        "TIMED_OUT" => CheckConclusion::TimedOut,
+        "ACTION_REQUIRED" => CheckConclusion::ActionRequired,
+        "NEUTRAL" => CheckConclusion::Neutral,
+        "STALE" => CheckConclusion::Stale,
+        "" if status.is_empty() => CheckConclusion::Pending,
+        _ => CheckConclusion::Unknown,
+    }
+}
+
+/// Maps StatusContext state string to a CheckConclusion.
+fn parse_status_state(state: &str) -> CheckConclusion {
+    match state {
+        "SUCCESS" => CheckConclusion::Success,
+        "FAILURE" | "ERROR" => CheckConclusion::Failure,
+        "PENDING" | "EXPECTED" => CheckConclusion::Pending,
+        _ => CheckConclusion::Unknown,
+    }
+}
+
+/// Maps rollup state string to a RollupState.
+fn parse_rollup_state(state: &str) -> RollupState {
+    match state {
+        "SUCCESS" => RollupState::Success,
+        "FAILURE" => RollupState::Failure,
+        "PENDING" => RollupState::Pending,
+        "ERROR" => RollupState::Error,
+        "EXPECTED" => RollupState::Expected,
+        _ => RollupState::Unknown,
+    }
 }
 
 #[cfg(test)]
@@ -661,5 +846,407 @@ mod tests {
 
         let comment = parse_review_comment(&data).unwrap();
         assert_eq!(comment.node_id, None);
+    }
+    // ---- Check parsing tests ----
+
+    fn create_graphql_response(checks: Vec<Value>) -> Value {
+        json!({
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "title": "Test PR",
+                        "url": "https://github.com/owner/repo/pull/1",
+                        "commits": {
+                            "nodes": [{
+                                "commit": {
+                                    "statusCheckRollup": {
+                                        "state": "FAILURE",
+                                        "contexts": {
+                                            "nodes": checks
+                                        }
+                                    }
+                                }
+                            }]
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    fn check_run_node(name: &str, status: &str, conclusion: &str, required: bool) -> Value {
+        json!({
+            "__typename": "CheckRun",
+            "name": name,
+            "status": status,
+            "conclusion": conclusion,
+            "startedAt": "2024-01-15T10:00:00Z",
+            "completedAt": "2024-01-15T10:05:00Z",
+            "detailsUrl": format!("https://ci.example.com/{name}"),
+            "isRequired": required,
+            "checkSuite": {
+                "app": { "slug": "github-actions" },
+                "workflowRun": { "workflow": { "name": "CI" } }
+            }
+        })
+    }
+
+    fn status_context_node(context: &str, state: &str, required: bool) -> Value {
+        json!({
+            "__typename": "StatusContext",
+            "context": context,
+            "state": state,
+            "description": format!("{context} status"),
+            "targetUrl": format!("https://ci.example.com/{context}"),
+            "createdAt": "2024-01-15T10:00:00Z",
+            "isRequired": required
+        })
+    }
+
+    #[test]
+    fn test_parse_checks_response_full() {
+        let response = create_graphql_response(vec![
+            check_run_node("build", "COMPLETED", "SUCCESS", true),
+            check_run_node("test", "COMPLETED", "FAILURE", true),
+            status_context_node("buildkite/pipeline", "SUCCESS", false),
+        ]);
+
+        let report = parse_checks_response(&response).unwrap();
+        assert_eq!(report.pr_title.as_deref(), Some("Test PR"));
+        assert_eq!(
+            report.pr_url.as_deref(),
+            Some("https://github.com/owner/repo/pull/1")
+        );
+        assert_eq!(report.rollup_state, RollupState::Failure);
+        assert_eq!(report.checks.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_checks_response_empty_checks() {
+        let response = create_graphql_response(vec![]);
+        let report = parse_checks_response(&response).unwrap();
+        assert!(report.checks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_checks_response_missing_pr() {
+        let response = json!({"data": {"repository": {}}});
+        let result = parse_checks_response(&response);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing pullRequest"));
+    }
+
+    #[test]
+    fn test_parse_checks_response_missing_commit() {
+        let response = json!({
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "title": "Test",
+                        "url": "https://github.com/owner/repo/pull/1",
+                        "commits": { "nodes": [] }
+                    }
+                }
+            }
+        });
+        let result = parse_checks_response(&response);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Missing commit"));
+    }
+
+    #[test]
+    fn test_parse_checks_response_no_rollup() {
+        let response = json!({
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "title": "Test",
+                        "url": "https://github.com/owner/repo/pull/1",
+                        "commits": {
+                            "nodes": [{
+                                "commit": {
+                                    "statusCheckRollup": null
+                                }
+                            }]
+                        }
+                    }
+                }
+            }
+        });
+        let report = parse_checks_response(&response).unwrap();
+        assert_eq!(report.rollup_state, RollupState::Unknown);
+        assert!(report.checks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_check_run() {
+        let node = check_run_node("build", "COMPLETED", "SUCCESS", true);
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.name, "build");
+        assert_eq!(check.conclusion, CheckConclusion::Success);
+        assert!(check.required);
+        assert_eq!(check.check_type, CheckType::CheckRun);
+        assert_eq!(check.app_name.as_deref(), Some("github-actions"));
+        assert_eq!(check.workflow_name.as_deref(), Some("CI"));
+        assert!(check.started_at.is_some());
+        assert!(check.completed_at.is_some());
+        assert!(check.details_url.is_some());
+    }
+
+    #[test]
+    fn test_parse_check_run_in_progress() {
+        let node = json!({
+            "__typename": "CheckRun",
+            "name": "build",
+            "status": "IN_PROGRESS",
+            "conclusion": null,
+            "isRequired": false,
+            "checkSuite": null
+        });
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.conclusion, CheckConclusion::Pending);
+    }
+
+    #[test]
+    fn test_parse_check_run_queued() {
+        let node = json!({
+            "__typename": "CheckRun",
+            "name": "build",
+            "status": "QUEUED",
+            "conclusion": null,
+            "isRequired": false,
+            "checkSuite": null
+        });
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.conclusion, CheckConclusion::Pending);
+    }
+
+    #[test]
+    fn test_parse_status_context() {
+        let node = status_context_node("buildkite/pipeline", "SUCCESS", true);
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.name, "buildkite/pipeline");
+        assert_eq!(check.conclusion, CheckConclusion::Success);
+        assert!(check.required);
+        assert_eq!(check.check_type, CheckType::StatusContext);
+        assert!(check.description.is_some());
+        assert!(check.details_url.is_some());
+    }
+
+    #[test]
+    fn test_parse_status_context_failure() {
+        let node = status_context_node("external-ci", "FAILURE", false);
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.conclusion, CheckConclusion::Failure);
+        assert!(!check.required);
+    }
+
+    #[test]
+    fn test_parse_status_context_error() {
+        let node = status_context_node("external-ci", "ERROR", false);
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.conclusion, CheckConclusion::Failure);
+    }
+
+    #[test]
+    fn test_parse_status_context_pending() {
+        let node = status_context_node("external-ci", "PENDING", false);
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.conclusion, CheckConclusion::Pending);
+    }
+
+    #[test]
+    fn test_parse_status_context_expected() {
+        let node = status_context_node("external-ci", "EXPECTED", false);
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.conclusion, CheckConclusion::Pending);
+    }
+
+    #[test]
+    fn test_parse_check_node_unknown_typename() {
+        let node = json!({
+            "__typename": "SomeNewType",
+            "name": "test"
+        });
+        assert!(parse_check_node(&node).is_none());
+    }
+
+    #[test]
+    fn test_parse_check_node_missing_typename() {
+        let node = json!({"name": "test"});
+        assert!(parse_check_node(&node).is_none());
+    }
+
+    #[test]
+    fn test_parse_check_conclusion_all_variants() {
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "SUCCESS"),
+            CheckConclusion::Success
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "FAILURE"),
+            CheckConclusion::Failure
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "SKIPPED"),
+            CheckConclusion::Skipped
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "CANCELLED"),
+            CheckConclusion::Cancelled
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "TIMED_OUT"),
+            CheckConclusion::TimedOut
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "ACTION_REQUIRED"),
+            CheckConclusion::ActionRequired
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "NEUTRAL"),
+            CheckConclusion::Neutral
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "STALE"),
+            CheckConclusion::Stale
+        );
+        assert_eq!(
+            parse_check_conclusion("COMPLETED", "UNKNOWN_VALUE"),
+            CheckConclusion::Unknown
+        );
+    }
+
+    #[test]
+    fn test_parse_check_conclusion_non_completed_statuses() {
+        assert_eq!(
+            parse_check_conclusion("IN_PROGRESS", ""),
+            CheckConclusion::Pending
+        );
+        assert_eq!(
+            parse_check_conclusion("QUEUED", ""),
+            CheckConclusion::Pending
+        );
+        assert_eq!(
+            parse_check_conclusion("REQUESTED", ""),
+            CheckConclusion::Pending
+        );
+        assert_eq!(
+            parse_check_conclusion("WAITING", ""),
+            CheckConclusion::Pending
+        );
+        assert_eq!(
+            parse_check_conclusion("PENDING", ""),
+            CheckConclusion::Pending
+        );
+        assert_eq!(
+            parse_check_conclusion("SOME_UNKNOWN_STATUS", ""),
+            CheckConclusion::Unknown
+        );
+    }
+
+    #[test]
+    fn test_parse_check_conclusion_empty_status_and_conclusion() {
+        assert_eq!(parse_check_conclusion("", ""), CheckConclusion::Pending);
+    }
+
+    #[test]
+    fn test_parse_status_state_all_variants() {
+        assert_eq!(parse_status_state("SUCCESS"), CheckConclusion::Success);
+        assert_eq!(parse_status_state("FAILURE"), CheckConclusion::Failure);
+        assert_eq!(parse_status_state("ERROR"), CheckConclusion::Failure);
+        assert_eq!(parse_status_state("PENDING"), CheckConclusion::Pending);
+        assert_eq!(parse_status_state("EXPECTED"), CheckConclusion::Pending);
+        assert_eq!(parse_status_state("UNKNOWN"), CheckConclusion::Unknown);
+    }
+
+    #[test]
+    fn test_parse_rollup_state_all_variants() {
+        assert_eq!(parse_rollup_state("SUCCESS"), RollupState::Success);
+        assert_eq!(parse_rollup_state("FAILURE"), RollupState::Failure);
+        assert_eq!(parse_rollup_state("PENDING"), RollupState::Pending);
+        assert_eq!(parse_rollup_state("ERROR"), RollupState::Error);
+        assert_eq!(parse_rollup_state("EXPECTED"), RollupState::Expected);
+        assert_eq!(parse_rollup_state("UNKNOWN_VALUE"), RollupState::Unknown);
+    }
+
+    #[test]
+    fn test_parse_check_run_minimal_fields() {
+        let node = json!({
+            "__typename": "CheckRun",
+            "name": "minimal",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS",
+            "isRequired": false,
+            "checkSuite": null
+        });
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.name, "minimal");
+        assert!(check.app_name.is_none());
+        assert!(check.workflow_name.is_none());
+        assert!(check.started_at.is_none());
+        assert!(check.completed_at.is_none());
+        assert!(check.details_url.is_none());
+    }
+
+    #[test]
+    fn test_parse_check_run_missing_name() {
+        let node = json!({
+            "__typename": "CheckRun",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS"
+        });
+        assert!(parse_check_node(&node).is_none());
+    }
+
+    #[test]
+    fn test_parse_status_context_missing_context() {
+        let node = json!({
+            "__typename": "StatusContext",
+            "state": "SUCCESS"
+        });
+        assert!(parse_check_node(&node).is_none());
+    }
+
+    #[test]
+    fn test_parse_checks_response_no_title_or_url() {
+        let response = json!({
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "commits": {
+                            "nodes": [{
+                                "commit": {
+                                    "statusCheckRollup": {
+                                        "state": "SUCCESS",
+                                        "contexts": { "nodes": [] }
+                                    }
+                                }
+                            }]
+                        }
+                    }
+                }
+            }
+        });
+        let report = parse_checks_response(&response).unwrap();
+        assert!(report.pr_title.is_none());
+        assert!(report.pr_url.is_none());
+    }
+
+    #[test]
+    fn test_parse_status_context_minimal_fields() {
+        let node = json!({
+            "__typename": "StatusContext",
+            "context": "ci/test",
+            "state": "SUCCESS"
+        });
+        let check = parse_check_node(&node).unwrap();
+        assert_eq!(check.name, "ci/test");
+        assert!(check.description.is_none());
+        assert!(check.details_url.is_none());
+        assert!(check.started_at.is_none());
     }
 }

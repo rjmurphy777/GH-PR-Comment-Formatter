@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rjmurphy777/GH-PR-Comment-Formatter/actions/workflows/ci.yml/badge.svg)](https://github.com/rjmurphy777/GH-PR-Comment-Formatter/actions/workflows/ci.yml)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
-![Tests](https://img.shields.io/badge/tests-103%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-179%20passing-brightgreen)
 
 A CLI tool to fetch and format GitHub PR comments for LLM consumption.
 
@@ -80,6 +80,24 @@ pr-comments owner/repo#123 --most-recent
 pr-comments owner/repo#123 --author username --most-recent
 ```
 
+### CI Check Statuses
+
+```bash
+# Show CI check statuses instead of review comments (default claude format)
+pr-comments owner/repo#123 --checks
+
+# Check statuses in minimal format (compact one-liner per check)
+pr-comments owner/repo#123 --checks --format minimal
+
+# Check statuses as JSON
+pr-comments owner/repo#123 --checks --format json
+
+# Save check statuses to a file
+pr-comments owner/repo#123 --checks --output checks.md
+```
+
+The `--checks` flag switches from the review comments pipeline to a CI checks pipeline, showing pass/fail/pending/skipped statuses for each check along with whether the check is required.
+
 ### Code Snippet Options
 
 ```bash
@@ -129,6 +147,7 @@ Options:
       --no-snippet                 Exclude code snippets
       --snippet-lines <LINES>      Max lines in snippets [default: 15]
   -O, --output <OUTPUT>            Write output to file
+      --checks                     Show CI check statuses instead of review comments
   -h, --help                       Print help
   -V, --version                    Print version
 ```

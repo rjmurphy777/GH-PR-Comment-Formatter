@@ -7,6 +7,11 @@ use std::process::Command;
 /// Trait for running commands, allowing for mocking in tests.
 pub trait CommandRunner {
     fn run(&self, endpoint: &str) -> Result<String, GitHubAPIError>;
+    fn run_graphql(
+        &self,
+        query: &str,
+        variables: &[(&str, &str)],
+    ) -> Result<String, GitHubAPIError>;
 }
 
 /// Default implementation that runs the actual `gh` CLI.
@@ -24,6 +29,36 @@ impl CommandRunner for GhCliRunner {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(GitHubAPIError::ApiError(format!(
                 "Failed to fetch from GitHub: {}",
+                stderr.trim()
+            )));
+        }
+
+        parse_utf8_output(output.stdout)
+    }
+
+    fn run_graphql(
+        &self,
+        query: &str,
+        variables: &[(&str, &str)],
+    ) -> Result<String, GitHubAPIError> {
+        let query_arg = format!("query={query}");
+        let mut args = vec!["api", "graphql", "-f", &query_arg];
+        let formatted_vars: Vec<String> =
+            variables.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        for var in &formatted_vars {
+            args.push("-F");
+            args.push(var);
+        }
+
+        let output = Command::new("gh")
+            .args(&args)
+            .output()
+            .map_err(map_io_error)?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(GitHubAPIError::ApiError(format!(
+                "Failed to fetch from GitHub GraphQL: {}",
                 stderr.trim()
             )));
         }
@@ -138,6 +173,72 @@ pub fn fetch_pr_info_with_runner(
         .map_err(|e| GitHubAPIError::ParseError(format!("Failed to parse PR info: {e}")))
 }
 
+/// GraphQL query to fetch CI check statuses for a PR.
+const CHECKS_GRAPHQL_QUERY: &str = r#"
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      title
+      url
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              state
+              contexts(first: 100) {
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    name
+                    status
+                    conclusion
+                    startedAt
+                    completedAt
+                    detailsUrl
+                    isRequired(pullRequestNumber: $pr)
+                    checkSuite {
+                      app { slug }
+                      workflowRun { workflow { name } }
+                    }
+                  }
+                  ... on StatusContext {
+                    context
+                    state
+                    description
+                    targetUrl
+                    createdAt
+                    isRequired(pullRequestNumber: $pr)
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
+/// Fetches PR check statuses using GraphQL.
+pub fn fetch_pr_checks(owner: &str, repo: &str, pr_number: i32) -> Result<Value, GitHubAPIError> {
+    fetch_pr_checks_with_runner(owner, repo, pr_number, &DEFAULT_RUNNER)
+}
+
+/// Fetches PR check statuses with a custom runner (for testing).
+pub fn fetch_pr_checks_with_runner(
+    owner: &str,
+    repo: &str,
+    pr_number: i32,
+    runner: &dyn CommandRunner,
+) -> Result<Value, GitHubAPIError> {
+    let pr_str = pr_number.to_string();
+    let variables = [("owner", owner), ("repo", repo), ("pr", pr_str.as_str())];
+    let output = runner.run_graphql(CHECKS_GRAPHQL_QUERY, &variables)?;
+    serde_json::from_str(&output)
+        .map_err(|e| GitHubAPIError::ParseError(format!("Failed to parse GraphQL response: {e}")))
+}
+
 /// Fetches an API endpoint that returns an array with a custom runner.
 fn fetch_api_endpoint_with_runner(
     endpoint: &str,
@@ -155,23 +256,43 @@ mod tests {
     /// Mock runner that returns a configurable response.
     struct MockRunner {
         response: Result<String, GitHubAPIError>,
+        graphql_response: Option<Result<String, GitHubAPIError>>,
     }
 
     impl MockRunner {
         fn success(json: &str) -> Self {
             Self {
                 response: Ok(json.to_string()),
+                graphql_response: None,
             }
         }
 
         fn error(err: GitHubAPIError) -> Self {
-            Self { response: Err(err) }
+            Self {
+                response: Err(err),
+                graphql_response: None,
+            }
+        }
+
+        fn with_graphql(mut self, response: Result<String, GitHubAPIError>) -> Self {
+            self.graphql_response = Some(response);
+            self
         }
     }
 
     impl CommandRunner for MockRunner {
         fn run(&self, _endpoint: &str) -> Result<String, GitHubAPIError> {
             self.response.clone()
+        }
+
+        fn run_graphql(
+            &self,
+            _query: &str,
+            _variables: &[(&str, &str)],
+        ) -> Result<String, GitHubAPIError> {
+            self.graphql_response
+                .clone()
+                .unwrap_or_else(|| self.response.clone())
         }
     }
 
@@ -375,5 +496,65 @@ mod tests {
             assert!(output.contains("resources"));
         }
         // If it fails, that's okay - we've tested that path elsewhere
+    }
+
+    #[test]
+    fn test_fetch_pr_checks_success() {
+        let graphql_response = r#"{"data":{"repository":{"pullRequest":{"title":"Test PR","url":"https://github.com/owner/repo/pull/1","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS","contexts":{"nodes":[]}}}}]}}}}}"#;
+        let runner = MockRunner::success("[]").with_graphql(Ok(graphql_response.to_string()));
+        let result = fetch_pr_checks_with_runner("owner", "repo", 1, &runner);
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        assert!(value["data"]["repository"]["pullRequest"]["title"]
+            .as_str()
+            .unwrap()
+            .contains("Test PR"));
+    }
+
+    #[test]
+    fn test_fetch_pr_checks_api_error() {
+        let runner = MockRunner::success("[]")
+            .with_graphql(Err(GitHubAPIError::ApiError("GraphQL error".to_string())));
+        let result = fetch_pr_checks_with_runner("owner", "repo", 1, &runner);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GitHubAPIError::ApiError(_)));
+    }
+
+    #[test]
+    fn test_fetch_pr_checks_parse_error() {
+        let runner = MockRunner::success("[]").with_graphql(Ok("not valid json".to_string()));
+        let result = fetch_pr_checks_with_runner("owner", "repo", 1, &runner);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, GitHubAPIError::ParseError(_)));
+        assert!(err.to_string().contains("GraphQL"));
+    }
+
+    #[test]
+    fn test_fetch_pr_checks_public_api() {
+        let result = fetch_pr_checks("nonexistent-owner-xyz", "nonexistent-repo-xyz", 99999);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mock_runner_graphql_falls_back_to_response() {
+        // When no graphql_response is set, run_graphql falls back to the main response
+        let runner = MockRunner::success(r#"{"data": "test"}"#);
+        let result = runner.run_graphql("query {}", &[]);
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("test"));
+    }
+
+    #[test]
+    fn test_gh_cli_runner_graphql_directly() {
+        // Test the GhCliRunner graphql directly - will error but covers the code path
+        let runner = GhCliRunner;
+        let result = runner.run_graphql(
+            "query { viewer { login } }",
+            &[("owner", "nonexistent-xyz"), ("repo", "nonexistent-xyz")],
+        );
+        // May succeed or fail depending on gh auth
+        // We're just covering the code path
+        let _ = result;
     }
 }

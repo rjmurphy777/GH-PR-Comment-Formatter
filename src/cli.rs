@@ -49,6 +49,10 @@ pub struct Args {
     /// Write output to file
     #[arg(short = 'O', long)]
     pub output: Option<String>,
+
+    /// Show CI check statuses instead of review comments
+    #[arg(long)]
+    pub checks: bool,
 }
 
 /// Available output formats.
@@ -204,6 +208,7 @@ mod tests {
             no_snippet: false,
             snippet_lines: 15,
             output: None,
+            checks: false,
         };
         let (owner, repo, pr) = resolve_pr_args(&args).unwrap();
         assert_eq!(owner, "owner");
@@ -224,6 +229,7 @@ mod tests {
             no_snippet: false,
             snippet_lines: 15,
             output: None,
+            checks: false,
         };
         let (owner, repo, pr) = resolve_pr_args(&args).unwrap();
         assert_eq!(owner, "ROKT");
@@ -244,6 +250,7 @@ mod tests {
             no_snippet: false,
             snippet_lines: 15,
             output: None,
+            checks: false,
         };
         let result = resolve_pr_args(&args);
         assert!(result.is_err());
@@ -277,5 +284,30 @@ mod tests {
     fn test_args_output_file() {
         let args = Args::parse_from(["pr-comments", "ROKT/canal#123", "-O", "output.md"]);
         assert_eq!(args.output, Some("output.md".to_string()));
+    }
+
+    #[test]
+    fn test_args_checks_flag() {
+        let args = Args::parse_from(["pr-comments", "ROKT/canal#123", "--checks"]);
+        assert!(args.checks);
+    }
+
+    #[test]
+    fn test_args_checks_default_false() {
+        let args = Args::parse_from(["pr-comments", "ROKT/canal#123"]);
+        assert!(!args.checks);
+    }
+
+    #[test]
+    fn test_args_checks_with_format() {
+        let args = Args::parse_from([
+            "pr-comments",
+            "ROKT/canal#123",
+            "--checks",
+            "--format",
+            "json",
+        ]);
+        assert!(args.checks);
+        assert_eq!(args.format, OutputFormat::Json);
     }
 }

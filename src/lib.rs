@@ -12,4 +12,4 @@ pub mod sanitizer;
 
 pub use cli::{Args, OutputFormat};
 pub use error::{GitHubAPIError, ParseError};
-pub use models::PRComment;
+pub use models::{CheckConclusion, CheckStatus, CheckType, ChecksReport, PRComment, RollupState};
