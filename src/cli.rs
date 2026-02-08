@@ -3,6 +3,9 @@
 use crate::error::ParseError;
 use clap::{Parser, ValueEnum};
 
+/// Git repository URL used for self-update via `cargo install --git`.
+pub const REPO_URL: &str = "https://github.com/rjmurphy777/Pull-request-fetcher";
+
 /// CLI tool to fetch and format GitHub PR comments for LLM consumption.
 #[derive(Parser, Debug)]
 #[command(name = "pr-comments")]
@@ -53,6 +56,18 @@ pub struct Args {
     /// Show CI check statuses instead of review comments
     #[arg(long)]
     pub checks: bool,
+
+    /// Update pr-comments to the latest version from GitHub
+    #[arg(long)]
+    pub update: bool,
+}
+
+impl Args {
+    /// Returns true if the user requested a self-update, either via `--update`
+    /// flag or by passing "update" as the positional argument.
+    pub fn is_update_request(&self) -> bool {
+        self.update || self.pr.as_deref() == Some("update")
+    }
 }
 
 /// Available output formats.
@@ -209,6 +224,7 @@ mod tests {
             snippet_lines: 15,
             output: None,
             checks: false,
+            update: false,
         };
         let (owner, repo, pr) = resolve_pr_args(&args).unwrap();
         assert_eq!(owner, "owner");
@@ -230,6 +246,7 @@ mod tests {
             snippet_lines: 15,
             output: None,
             checks: false,
+            update: false,
         };
         let (owner, repo, pr) = resolve_pr_args(&args).unwrap();
         assert_eq!(owner, "ROKT");
@@ -251,6 +268,7 @@ mod tests {
             snippet_lines: 15,
             output: None,
             checks: false,
+            update: false,
         };
         let result = resolve_pr_args(&args);
         assert!(result.is_err());
@@ -309,5 +327,31 @@ mod tests {
         ]);
         assert!(args.checks);
         assert_eq!(args.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn test_args_update_flag() {
+        let args = Args::parse_from(["pr-comments", "--update"]);
+        assert!(args.update);
+        assert!(args.is_update_request());
+    }
+
+    #[test]
+    fn test_args_update_positional() {
+        let args = Args::parse_from(["pr-comments", "update"]);
+        assert!(!args.update);
+        assert!(args.is_update_request());
+    }
+
+    #[test]
+    fn test_args_update_default_false() {
+        let args = Args::parse_from(["pr-comments", "ROKT/canal#123"]);
+        assert!(!args.update);
+        assert!(!args.is_update_request());
+    }
+
+    #[test]
+    fn test_repo_url_is_valid() {
+        assert!(REPO_URL.starts_with("https://github.com/"));
     }
 }

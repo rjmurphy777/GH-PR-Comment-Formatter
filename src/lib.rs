@@ -10,6 +10,6 @@ pub mod models;
 pub mod parser;
 pub mod sanitizer;
 
-pub use cli::{Args, OutputFormat};
+pub use cli::{Args, OutputFormat, REPO_URL};
 pub use error::{GitHubAPIError, ParseError};
 pub use models::{CheckConclusion, CheckStatus, CheckType, ChecksReport, PRComment, RollupState};
