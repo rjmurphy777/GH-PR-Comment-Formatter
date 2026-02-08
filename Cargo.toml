@@ -5,7 +5,7 @@ edition = "2021"
 description = "CLI tool to fetch and format GitHub PR comments for LLM consumption"
 license = "MIT"
 authors = ["rjmurphy777"]
-repository = "https://github.com/ROKT/github-pr-pull"
+repository = "https://github.com/rjmurphy777/Pull-request-fetcher"
 keywords = ["github", "pull-request", "cli", "llm", "code-review"]
 categories = ["command-line-utilities", "development-tools"]
 

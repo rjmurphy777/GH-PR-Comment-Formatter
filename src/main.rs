@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use pr_comments::{
-    cli::{resolve_pr_args, Args, OutputFormat},
+    cli::{resolve_pr_args, Args, OutputFormat, REPO_URL},
     fetcher::{fetch_pr_checks, fetch_pr_comments, fetch_pr_info, fetch_pr_reviews},
     formatter::{
         format_as_json, format_checks_as_json, format_checks_for_claude, format_checks_minimal,
@@ -15,7 +15,7 @@ use pr_comments::{
 };
 use std::fs;
 use std::io::{self, Write};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
     let args = Args::parse();
@@ -30,6 +30,11 @@ fn main() -> ExitCode {
 }
 
 fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    // Handle self-update before resolving PR arguments
+    if args.is_update_request() {
+        return run_update();
+    }
+
     // Resolve PR arguments
     let (owner, repo, pr_number) = resolve_pr_args(&args)?;
 
@@ -77,6 +82,22 @@ fn run_checks(
     };
 
     Ok(output)
+}
+
+fn run_update() -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("Updating pr-comments from {REPO_URL}...");
+
+    let status = Command::new("cargo")
+        .args(["install", "--git", REPO_URL])
+        .status()
+        .map_err(|e| format!("Failed to run cargo. Is the Rust toolchain installed?\n  {e}"))?;
+
+    if status.success() {
+        eprintln!("pr-comments updated successfully!");
+        Ok(())
+    } else {
+        Err(format!("cargo install exited with status: {status}").into())
+    }
 }
 
 fn run_comments(
