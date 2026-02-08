@@ -1,6 +1,6 @@
-//! Output formatting for PR comments in multiple styles.
+//! Output formatting for PR comments and check statuses in multiple styles.
 
-use crate::models::PRComment;
+use crate::models::{CheckConclusion, CheckStatus, ChecksReport, PRComment};
 use crate::parser::group_by_file;
 use serde_json::json;
 use std::collections::HashSet;
@@ -308,9 +308,174 @@ pub fn format_as_json(
     serde_json::to_string_pretty(&json_comments).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Formats a checks report for Claude/LLM consumption with full context.
+pub fn format_checks_for_claude(report: &ChecksReport) -> String {
+    let mut output = String::new();
+
+    output.push_str("# Pull Request Check Status\n\n");
+
+    if let Some(title) = &report.pr_title {
+        output.push_str(&format!("**PR Title:** {title}\n"));
+    }
+    if let Some(url) = &report.pr_url {
+        output.push_str(&format!("**PR URL:** {url}\n"));
+    }
+
+    output.push_str(&format!("**Overall Status:** {}\n", report.rollup_state));
+
+    let summary = report.summary_counts();
+    output.push_str(&format!(
+        "**Summary:** {} passed, {} failed, {} pending, {} skipped ({} total)\n\n",
+        summary.passed, summary.failed, summary.pending, summary.skipped, summary.total
+    ));
+
+    // Failed required checks (highest priority)
+    let failed_req = report.failed_required();
+    if !failed_req.is_empty() {
+        output.push_str("## Failed Required Checks\n\n");
+        for check in &failed_req {
+            format_check_detail(&mut output, check);
+        }
+    }
+
+    // Failed optional checks
+    let failed_opt = report.failed_optional();
+    if !failed_opt.is_empty() {
+        output.push_str("## Failed Optional Checks\n\n");
+        for check in &failed_opt {
+            format_check_detail(&mut output, check);
+        }
+    }
+
+    // Pending checks
+    let pending = report.pending();
+    if !pending.is_empty() {
+        output.push_str("## Pending Checks\n\n");
+        for check in &pending {
+            format_check_brief(&mut output, check);
+        }
+        output.push('\n');
+    }
+
+    // Passed required checks (brief)
+    let passed_req = report.passed_required();
+    if !passed_req.is_empty() {
+        output.push_str("## Passed Required Checks\n\n");
+        for check in &passed_req {
+            format_check_brief(&mut output, check);
+        }
+        output.push('\n');
+    }
+
+    // Passed optional checks (brief)
+    let passed_opt = report.passed_optional();
+    if !passed_opt.is_empty() {
+        output.push_str("## Passed Optional Checks\n\n");
+        for check in &passed_opt {
+            format_check_brief(&mut output, check);
+        }
+        output.push('\n');
+    }
+
+    // Skipped checks
+    let skipped = report.skipped();
+    if !skipped.is_empty() {
+        output.push_str("## Skipped Checks\n\n");
+        for check in &skipped {
+            format_check_brief(&mut output, check);
+        }
+        output.push('\n');
+    }
+
+    if report.checks.is_empty() {
+        output.push_str("No checks found for this pull request.\n");
+    }
+
+    output
+}
+
+/// Formats a single check with full details (for failed checks).
+fn format_check_detail(output: &mut String, check: &CheckStatus) {
+    output.push_str(&format!(
+        "### [{}] {}{}\n\n",
+        check.conclusion.display_icon(),
+        check.name,
+        if check.required { " (required)" } else { "" }
+    ));
+
+    if let Some(desc) = &check.description {
+        output.push_str(&format!("**Description:** {desc}\n"));
+    }
+    if let Some(workflow) = &check.workflow_name {
+        output.push_str(&format!("**Workflow:** {workflow}\n"));
+    }
+    if let Some(app) = &check.app_name {
+        output.push_str(&format!("**App:** {app}\n"));
+    }
+    if let Some(url) = &check.details_url {
+        output.push_str(&format!("**Details:** {url}\n"));
+    }
+    output.push('\n');
+}
+
+/// Formats a single check as a brief one-liner.
+fn format_check_brief(output: &mut String, check: &CheckStatus) {
+    output.push_str(&format!(
+        "- [{}] {}\n",
+        check.conclusion.display_icon(),
+        check.name
+    ));
+}
+
+/// Formats a checks report in minimal/compact style.
+pub fn format_checks_minimal(report: &ChecksReport) -> String {
+    let mut output = String::new();
+
+    let summary = report.summary_counts();
+    output.push_str(&format!(
+        "Status: {} | {} passed, {} failed, {} pending, {} skipped\n",
+        report.rollup_state, summary.passed, summary.failed, summary.pending, summary.skipped
+    ));
+
+    // Sort: failures first, then pending, then success, then skipped
+    let mut sorted_checks: Vec<&CheckStatus> = report.checks.iter().collect();
+    sorted_checks.sort_by_key(|c| match c.conclusion {
+        CheckConclusion::Failure
+        | CheckConclusion::TimedOut
+        | CheckConclusion::ActionRequired
+        | CheckConclusion::Cancelled => 0,
+        CheckConclusion::Pending => 1,
+        CheckConclusion::Success => 2,
+        _ => 3,
+    });
+
+    for check in &sorted_checks {
+        output.push_str(&format!(
+            "[{}]{} {}\n",
+            check.conclusion.display_icon(),
+            if check.required { "*" } else { " " },
+            check.name
+        ));
+    }
+
+    if !sorted_checks.is_empty() {
+        output.push_str("* = required\n");
+    } else {
+        output.push_str("No checks found.\n");
+    }
+
+    output
+}
+
+/// Formats a checks report as JSON.
+pub fn format_checks_as_json(report: &ChecksReport) -> String {
+    serde_json::to_string_pretty(report).unwrap_or_else(|_| "{}".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{CheckType, RollupState};
     use chrono::{TimeZone, Utc};
 
     fn create_test_comment(id: i64, file: &str, line: Option<i32>, author: &str) -> PRComment {
@@ -662,5 +827,221 @@ mod tests {
         let output = format_as_json(&comments, true, 10);
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert!(parsed[0]["node_id"].is_null());
+    }
+
+    // ---- Check formatter tests ----
+
+    fn create_test_check_status(
+        name: &str,
+        conclusion: CheckConclusion,
+        required: bool,
+    ) -> CheckStatus {
+        CheckStatus {
+            name: name.to_string(),
+            conclusion,
+            required,
+            description: None,
+            details_url: None,
+            started_at: None,
+            completed_at: None,
+            check_type: CheckType::CheckRun,
+            workflow_name: None,
+            app_name: None,
+        }
+    }
+
+    fn create_test_checks_report() -> ChecksReport {
+        ChecksReport {
+            pr_title: Some("Test PR".to_string()),
+            pr_url: Some("https://github.com/owner/repo/pull/1".to_string()),
+            rollup_state: RollupState::Failure,
+            checks: vec![
+                create_test_check_status("build", CheckConclusion::Success, true),
+                create_test_check_status("lint", CheckConclusion::Failure, true),
+                create_test_check_status("coverage", CheckConclusion::Success, false),
+                create_test_check_status("optional-lint", CheckConclusion::Failure, false),
+                create_test_check_status("deploy", CheckConclusion::Pending, false),
+                create_test_check_status("docs", CheckConclusion::Skipped, false),
+            ],
+        }
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_header() {
+        let report = create_test_checks_report();
+        let output = format_checks_for_claude(&report);
+        assert!(output.contains("# Pull Request Check Status"));
+        assert!(output.contains("**PR Title:** Test PR"));
+        assert!(output.contains("**PR URL:** https://github.com/owner/repo/pull/1"));
+        assert!(output.contains("**Overall Status:** FAILURE"));
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_summary() {
+        let report = create_test_checks_report();
+        let output = format_checks_for_claude(&report);
+        assert!(output.contains("2 passed"));
+        assert!(output.contains("2 failed"));
+        assert!(output.contains("1 pending"));
+        assert!(output.contains("1 skipped"));
+        assert!(output.contains("6 total"));
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_sections() {
+        let report = create_test_checks_report();
+        let output = format_checks_for_claude(&report);
+        assert!(output.contains("## Failed Required Checks"));
+        assert!(output.contains("## Failed Optional Checks"));
+        assert!(output.contains("## Pending Checks"));
+        assert!(output.contains("## Passed Required Checks"));
+        assert!(output.contains("## Passed Optional Checks"));
+        assert!(output.contains("## Skipped Checks"));
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_failed_required_detail() {
+        let report = create_test_checks_report();
+        let output = format_checks_for_claude(&report);
+        assert!(output.contains("[FAIL] lint (required)"));
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_with_details() {
+        let mut report = create_test_checks_report();
+        report.checks[1].description = Some("Build failed".to_string());
+        report.checks[1].workflow_name = Some("CI".to_string());
+        report.checks[1].app_name = Some("github-actions".to_string());
+        report.checks[1].details_url = Some("https://ci.example.com".to_string());
+        let output = format_checks_for_claude(&report);
+        assert!(output.contains("**Description:** Build failed"));
+        assert!(output.contains("**Workflow:** CI"));
+        assert!(output.contains("**App:** github-actions"));
+        assert!(output.contains("**Details:** https://ci.example.com"));
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_empty() {
+        let report = ChecksReport {
+            pr_title: None,
+            pr_url: None,
+            rollup_state: RollupState::Success,
+            checks: vec![],
+        };
+        let output = format_checks_for_claude(&report);
+        assert!(output.contains("No checks found"));
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_all_passing() {
+        let report = ChecksReport {
+            pr_title: Some("All Good".to_string()),
+            pr_url: None,
+            rollup_state: RollupState::Success,
+            checks: vec![
+                create_test_check_status("build", CheckConclusion::Success, true),
+                create_test_check_status("test", CheckConclusion::Success, true),
+            ],
+        };
+        let output = format_checks_for_claude(&report);
+        assert!(output.contains("**Overall Status:** SUCCESS"));
+        assert!(output.contains("## Passed Required Checks"));
+        assert!(!output.contains("## Failed"));
+    }
+
+    #[test]
+    fn test_format_checks_for_claude_no_title_or_url() {
+        let report = ChecksReport {
+            pr_title: None,
+            pr_url: None,
+            rollup_state: RollupState::Success,
+            checks: vec![create_test_check_status(
+                "build",
+                CheckConclusion::Success,
+                true,
+            )],
+        };
+        let output = format_checks_for_claude(&report);
+        assert!(!output.contains("**PR Title:**"));
+        assert!(!output.contains("**PR URL:**"));
+    }
+
+    #[test]
+    fn test_format_checks_minimal_header() {
+        let report = create_test_checks_report();
+        let output = format_checks_minimal(&report);
+        assert!(output.contains("Status: FAILURE"));
+        assert!(output.contains("2 passed"));
+        assert!(output.contains("2 failed"));
+    }
+
+    #[test]
+    fn test_format_checks_minimal_required_marker() {
+        let report = create_test_checks_report();
+        let output = format_checks_minimal(&report);
+        // Required checks should have * marker
+        assert!(output.contains("[PASS]* build"));
+        assert!(output.contains("[FAIL]* lint"));
+        // Optional checks should have space
+        assert!(output.contains("[PASS]  coverage"));
+        assert!(output.contains("* = required"));
+    }
+
+    #[test]
+    fn test_format_checks_minimal_sorted_by_priority() {
+        let report = create_test_checks_report();
+        let output = format_checks_minimal(&report);
+        // Failures should appear before successes
+        let fail_pos = output.find("[FAIL]").unwrap();
+        let last_pass_pos = output.rfind("[PASS]").unwrap();
+        assert!(
+            fail_pos < last_pass_pos,
+            "Failures should appear before passes"
+        );
+    }
+
+    #[test]
+    fn test_format_checks_minimal_empty() {
+        let report = ChecksReport {
+            pr_title: None,
+            pr_url: None,
+            rollup_state: RollupState::Success,
+            checks: vec![],
+        };
+        let output = format_checks_minimal(&report);
+        assert!(output.contains("No checks found"));
+    }
+
+    #[test]
+    fn test_format_checks_as_json_valid() {
+        let report = create_test_checks_report();
+        let output = format_checks_as_json(&report);
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(parsed["pr_title"], "Test PR");
+        assert_eq!(parsed["rollup_state"], "FAILURE");
+        assert!(parsed["checks"].is_array());
+        assert_eq!(parsed["checks"].as_array().unwrap().len(), 6);
+    }
+
+    #[test]
+    fn test_format_checks_as_json_empty() {
+        let report = ChecksReport {
+            pr_title: None,
+            pr_url: None,
+            rollup_state: RollupState::Success,
+            checks: vec![],
+        };
+        let output = format_checks_as_json(&report);
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(parsed["checks"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_format_checks_as_json_roundtrip() {
+        let report = create_test_checks_report();
+        let output = format_checks_as_json(&report);
+        let deserialized: ChecksReport = serde_json::from_str(&output).unwrap();
+        assert_eq!(deserialized.rollup_state, RollupState::Failure);
+        assert_eq!(deserialized.checks.len(), 6);
     }
 }

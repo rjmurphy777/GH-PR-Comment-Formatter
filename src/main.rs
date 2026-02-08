@@ -3,12 +3,15 @@
 use clap::Parser;
 use pr_comments::{
     cli::{resolve_pr_args, Args, OutputFormat},
-    fetcher::{fetch_pr_comments, fetch_pr_info, fetch_pr_reviews},
+    fetcher::{fetch_pr_checks, fetch_pr_comments, fetch_pr_info, fetch_pr_reviews},
     formatter::{
-        format_as_json, format_comments_flat, format_comments_grouped, format_comments_minimal,
-        format_for_claude,
+        format_as_json, format_checks_as_json, format_checks_for_claude, format_checks_minimal,
+        format_comments_flat, format_comments_grouped, format_comments_minimal, format_for_claude,
     },
-    parser::{filter_by_author, get_most_recent_per_file, parse_comments, parse_review_comments},
+    parser::{
+        filter_by_author, get_most_recent_per_file, parse_checks_response, parse_comments,
+        parse_review_comments,
+    },
 };
 use std::fs;
 use std::io::{self, Write};
@@ -30,10 +33,62 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // Resolve PR arguments
     let (owner, repo, pr_number) = resolve_pr_args(&args)?;
 
+    let output = if args.checks {
+        run_checks(&owner, &repo, pr_number, &args)?
+    } else {
+        run_comments(&owner, &repo, pr_number, &args)?
+    };
+
+    // Write output
+    if let Some(output_path) = &args.output {
+        fs::write(output_path, &output)?;
+        eprintln!("Output written to {output_path}");
+    } else {
+        io::stdout().write_all(output.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+fn run_checks(
+    owner: &str,
+    repo: &str,
+    pr_number: i32,
+    args: &Args,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let raw_response = fetch_pr_checks(owner, repo, pr_number)?;
+    let report = parse_checks_response(&raw_response)?;
+
+    let output = match args.format {
+        OutputFormat::Claude => format_checks_for_claude(&report),
+        OutputFormat::Json => format_checks_as_json(&report),
+        OutputFormat::Minimal => format_checks_minimal(&report),
+        OutputFormat::Grouped | OutputFormat::Flat => {
+            eprintln!(
+                "Note: --format {} is not supported with --checks, using claude format",
+                match args.format {
+                    OutputFormat::Grouped => "grouped",
+                    OutputFormat::Flat => "flat",
+                    _ => unreachable!(),
+                }
+            );
+            format_checks_for_claude(&report)
+        }
+    };
+
+    Ok(output)
+}
+
+fn run_comments(
+    owner: &str,
+    repo: &str,
+    pr_number: i32,
+    args: &Args,
+) -> Result<String, Box<dyn std::error::Error>> {
     // Fetch line-specific comments, reviews, and PR info
-    let raw_comments = fetch_pr_comments(&owner, &repo, pr_number)?;
-    let raw_reviews = fetch_pr_reviews(&owner, &repo, pr_number)?;
-    let pr_info = fetch_pr_info(&owner, &repo, pr_number)?;
+    let raw_comments = fetch_pr_comments(owner, repo, pr_number)?;
+    let raw_reviews = fetch_pr_reviews(owner, repo, pr_number)?;
+    let pr_info = fetch_pr_info(owner, repo, pr_number)?;
 
     // Parse line-specific comments
     let mut comments = parse_comments(&raw_comments);
@@ -86,13 +141,5 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         OutputFormat::Json => format_as_json(&comments, include_snippet, args.snippet_lines),
     };
 
-    // Write output
-    if let Some(output_path) = &args.output {
-        fs::write(output_path, &output)?;
-        eprintln!("Output written to {output_path}");
-    } else {
-        io::stdout().write_all(output.as_bytes())?;
-    }
-
-    Ok(())
+    Ok(output)
 }
