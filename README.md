@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rjmurphy777/GH-PR-Comment-Formatter/actions/workflows/ci.yml/badge.svg)](https://github.com/rjmurphy777/GH-PR-Comment-Formatter/actions/workflows/ci.yml)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
-![Tests](https://img.shields.io/badge/tests-179%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-190%20passing-brightgreen)
 
 A CLI tool to fetch and format GitHub PR comments for LLM consumption.
 
@@ -115,6 +115,16 @@ pr-comments owner/repo#123 --snippet-lines 25
 pr-comments owner/repo#123 --output review-comments.md
 ```
 
+### Self-Update
+
+```bash
+# Update pr-comments to the latest version
+pr-comments update
+
+# Or using the flag form
+pr-comments --update
+```
+
 ## Examples
 
 ```bash
@@ -148,6 +158,7 @@ Options:
       --snippet-lines <LINES>      Max lines in snippets [default: 15]
   -O, --output <OUTPUT>            Write output to file
       --checks                     Show CI check statuses instead of review comments
+      --update                     Update pr-comments to the latest version
   -h, --help                       Print help
   -V, --version                    Print version
 ```
